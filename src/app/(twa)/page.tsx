@@ -5,12 +5,14 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   categories,
-  activeSubscriptions,
   getTotalBalance,
   getCompaniesBySearch,
   getSubscriptionById,
   getCategoryById,
 } from "@/lib/mockData";
+import { getActiveSubscriptions } from "@/services/subscriptions/subscription.service";
+import { computeSubscriptionProgress } from "@/services/subscriptions/subscription.progress";
+import { SubscriptionProgressBar } from "@/components/subscriptions/SubscriptionProgressBar";
 import type { CategoryId } from "@/lib/mockData";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -19,9 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Wallet, ChevronRight, Search, Coffee } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-import { getActiveSubscriptionsWithEndDates, ActiveSubscriptionWithDates } from "@/lib/services/subscriptionService";
-
 
 const container = {
   hidden: { opacity: 0 },
@@ -55,7 +54,7 @@ export default function HomePage() {
 
   const activeSubsWithDetails = useMemo(
     () =>
-      activeSubscriptions
+      getActiveSubscriptions()
         .map((a) => ({ ...a, sub: getSubscriptionById(a.subscriptionId) }))
         .filter((a): a is typeof a & { sub: NonNullable<typeof a.sub> } => !!a.sub),
     []
@@ -158,69 +157,50 @@ export default function HomePage() {
 
       {/* Active Subscriptions */}
       <motion.section
-  initial={{ y: 8, opacity: 0 }}
-  animate={{ y: 0, opacity: 1 }}
-  transition={{ delay: 0.1 }}
-  className="mb-6"
->
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-muted-foreground">
-      Active Subscriptions
-    </h2>
-    <Link href="/marketplace">
-      <Button variant="ghost" size="sm" className="text-primary text-xs h-8">
-        All Subscriptions
-        <ChevronRight className="h-4 w-4 ml-0.5" />
-      </Button>
-    </Link>
-  </div>
-  <div className="flex gap-2 overflow-x-auto pb-2">
-    {getActiveSubscriptionsWithEndDates().slice(0, 3).map(
-      ({ sub, subscriptionId, startDate, endDate }) =>
-        sub && (
-          <Link key={subscriptionId} href={`/marketplace/${subscriptionId}`}>
-            <Card className="glass min-w-[160px] border-white/10 transition-all active:scale-[0.98] hover:border-white/20">
-              <CardContent className="p-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 mb-2">
-                  <Coffee className="h-4 w-4 text-primary" />
-                </div>
-                <p className="text-sm font-semibold truncate">{sub.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{sub.renewalLabel}</p>
-
-                {/* Прогресс и дата окончания */}
-                <div className="mt-2">
-                  {(() => {
-                    const now = new Date();
-                    const start = new Date(startDate);
-                    const end = new Date(endDate);
-                    const totalDays = Math.max(
-                      1,
-                      Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-                    );
-                    const daysLeft = Math.max(
-                      0,
-                      Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-                    );
-                    const progressPercent = (daysLeft / totalDays) * 100;
-
-                    return (
-                      <>
-                        <Progress value={progressPercent} />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {daysLeft} day{daysLeft !== 1 ? "s" : ""} left — expires{" "}
-                          {end.toLocaleDateString()}
-                        </p>
-                      </>
-                    );
-                  })()}
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        )
-    )}
-  </div>
-</motion.section>
+        initial={{ y: 8, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.1 }}
+        className="mb-6"
+      >
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Active Subscriptions
+          </h2>
+          <div className="flex items-center gap-1">
+            <Link href="/history">
+              <Button variant="ghost" size="sm" className="text-muted-foreground text-xs h-8">
+                History
+              </Button>
+            </Link>
+            <Link href="/marketplace">
+              <Button variant="ghost" size="sm" className="text-primary text-xs h-8">
+                All Subscriptions
+                <ChevronRight className="h-4 w-4 ml-0.5" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {activeSubsWithDetails.slice(0, 3).map(({ sub, subscriptionId, expiresAt, renewPeriodDays }) =>
+            sub ? (
+              <Link key={subscriptionId} href={`/marketplace/${subscriptionId}`}>
+                <Card className="glass min-w-[160px] border-white/10 transition-all active:scale-[0.98] hover:border-white/20">
+                  <CardContent className="p-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 mb-2">
+                      <Coffee className="h-4 w-4 text-primary" />
+                    </div>
+                    <p className="text-sm font-semibold truncate">{sub.name}</p>
+                    <SubscriptionProgressBar
+                      progress={computeSubscriptionProgress({ expiresAt, renewPeriodDays })}
+                      className="mt-2"
+                    />
+                  </CardContent>
+                </Card>
+              </Link>
+            ) : null
+          )}
+        </div>
+      </motion.section>
 
       {/* Loyalty Cards — preview only; category filter applies here only */}
       <section>

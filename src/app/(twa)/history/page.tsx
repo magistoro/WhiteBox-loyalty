@@ -1,12 +1,16 @@
 "use client";
 
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { transactions } from "@/lib/mockData";
+import { getExpiredSubscriptions } from "@/services/subscriptions/subscription.service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowDownLeft, ArrowUpRight, History as HistoryIcon } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowDownLeft, ArrowUpRight, History as HistoryIcon, Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SubscriptionHistoryList } from "@/components/subscriptions/history/SubscriptionHistoryList";
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -34,9 +38,15 @@ const item = {
 };
 
 export default function HistoryPage() {
-  const sorted = [...transactions].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  const sortedTransactions = useMemo(
+    () =>
+      [...transactions].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      ),
+    []
   );
+
+  const expiredSubscriptions = useMemo(() => getExpiredSubscriptions(), []);
 
   return (
     <motion.div
@@ -56,64 +66,91 @@ export default function HistoryPage() {
           <h1 className="text-lg font-semibold">History</h1>
         </motion.div>
         <motion.p variants={item} className="text-sm text-muted-foreground">
-          Your earn and spend transactions
+          Your activity and subscription history
         </motion.p>
       </motion.section>
 
-      <ScrollArea className="h-[calc(100dvh-11rem)] pr-2">
-        <motion.ul
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="space-y-2"
-        >
-          {sorted.map((tx) => (
-            <motion.li key={tx.id} variants={item}>
-              <Card className="glass border-white/10">
-                <CardContent className="flex items-center gap-3 px-4 py-3">
-                  <div
-                    className={cn(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                      tx.type === "earn"
-                        ? "bg-emerald-500/20 text-emerald-400"
-                        : "bg-amber-500/20 text-amber-400"
-                    )}
-                  >
-                    {tx.type === "earn" ? (
-                      <ArrowDownLeft className="h-5 w-5" />
-                    ) : (
-                      <ArrowUpRight className="h-5 w-5" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{tx.companyName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDate(tx.date)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span
-                      className={cn(
-                        "tabular-nums font-semibold",
-                        tx.type === "earn" ? "text-emerald-400" : "text-amber-400"
-                      )}
-                    >
-                      {tx.type === "earn" ? "+" : "-"}
-                      {Math.abs(tx.amount)}
-                    </span>
-                    <Badge
-                      variant={tx.status === "active" ? "default" : "secondary"}
-                      className="text-[10px]"
-                    >
-                      {tx.status === "active" ? "Active" : "Expired"}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.li>
-          ))}
-        </motion.ul>
-      </ScrollArea>
+      <Tabs defaultValue="activity" className="w-full">
+        <TabsList className="glass border-white/10 mb-4 w-full">
+          <TabsTrigger value="activity" className="flex-1">
+            <ArrowDownLeft className="h-4 w-4 mr-1.5" />
+            Activity
+          </TabsTrigger>
+          <TabsTrigger value="subscriptions" className="flex-1">
+            <Archive className="h-4 w-4 mr-1.5" />
+            Subscriptions
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="activity" className="mt-0">
+          <ScrollArea className="h-[calc(100dvh-14rem)] pr-2">
+            <motion.ul
+              variants={container}
+              initial="hidden"
+              animate="show"
+              className="space-y-2"
+            >
+              {sortedTransactions.map((tx) => (
+                <motion.li key={tx.id} variants={item}>
+                  <Card className="glass border-white/10">
+                    <CardContent className="flex items-center gap-3 px-4 py-3">
+                      <div
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                          tx.type === "earn"
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : "bg-amber-500/20 text-amber-400"
+                        )}
+                      >
+                        {tx.type === "earn" ? (
+                          <ArrowDownLeft className="h-5 w-5" />
+                        ) : (
+                          <ArrowUpRight className="h-5 w-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{tx.companyName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(tx.date)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            "tabular-nums font-semibold",
+                            tx.type === "earn"
+                              ? "text-emerald-400"
+                              : "text-amber-400"
+                          )}
+                        >
+                          {tx.type === "earn" ? "+" : "-"}
+                          {Math.abs(tx.amount)}
+                        </span>
+                        <Badge
+                          variant={
+                            tx.status === "active" ? "default" : "secondary"
+                          }
+                          className="text-[10px]"
+                        >
+                          {tx.status === "active" ? "Active" : "Expired"}
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.li>
+              ))}
+            </motion.ul>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="subscriptions" className="mt-0">
+          <ScrollArea className="h-[calc(100dvh-14rem)] pr-2">
+            <SubscriptionHistoryList
+              expiredSubscriptions={expiredSubscriptions}
+            />
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
     </motion.div>
   );
 }

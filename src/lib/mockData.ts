@@ -335,8 +335,24 @@ export const subscriptions: Subscription[] = [
 ];
 
 export const activeSubscriptions = [
-  { subscriptionId: "sub-coffee-daily", activatedAt: "2026-02-01", companyIds: ["coffee-shop", "espresso-bar", "roastery"] },
-  { subscriptionId: "sub-gym-monthly", activatedAt: "2026-01-15", companyIds: ["gym"] },
+  {
+    subscriptionId: "sub-coffee-daily",
+    activatedAt: "2026-02-01T00:00:00Z",
+    expiresAt: "2026-02-02T00:00:00Z",
+    renewPeriodDays: 1,
+    willAutoRenew: true,
+    status: "active",
+    companyIds: ["coffee-shop", "espresso-bar", "roastery"],
+  },
+  {
+    subscriptionId: "sub-gym-monthly",
+    activatedAt: "2026-01-15T00:00:00Z",
+    expiresAt: "2026-02-15T00:00:00Z",
+    renewPeriodDays: 30,
+    willAutoRenew: true,
+    status: "active",
+    companyIds: ["gym"],
+  },
 ];
 
 export const transactions: Transaction[] = [
