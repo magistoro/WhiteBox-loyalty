@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { MapPin, Filter, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "@/components/categories/CategoryIcon";
 
 // Mock map: grid of dots representing partner locations (clustering placeholder)
 function MockMap({
@@ -151,7 +152,10 @@ export default function MapPage() {
                         : "bg-muted/50 hover:bg-muted"
                     )}
                   >
-                    {cat.name}
+                    <span className="inline-flex items-center gap-2">
+                      <CategoryIcon iconName={cat.icon ?? "Circle"} className="h-4 w-4" />
+                      {cat.name}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -162,7 +166,13 @@ export default function MapPage() {
 
       {selectedCategory && (
         <p className="text-sm text-muted-foreground mb-2">
-          Showing: {getCategoryById(selectedCategory)?.name ?? "All"}
+          <span className="inline-flex items-center gap-1.5">
+            <CategoryIcon
+              iconName={getCategoryById(selectedCategory)?.icon ?? "Circle"}
+              className="h-4 w-4 text-primary"
+            />
+            Showing: {getCategoryById(selectedCategory)?.name ?? "All"}
+          </span>
         </p>
       )}
 

@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WhiteBox - Loyalty Wallet (TWA) + API
 
-## Getting Started
+Monorepo: **Next.js** (Telegram Web App UI) + **NestJS** (REST API) + **Prisma** + **PostgreSQL**.
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 20+
+- PostgreSQL (local or remote)
+- Copy `.env.example` -> `.env` and set `DATABASE_URL`, `JWT_SECRET`, etc.
+
+## Install
+
+```bash
+npm install
+npx prisma generate
+```
+
+## Run the web app (port 3000)
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Run the API (port 3001)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run api:dev
+```
 
-## Learn More
+- Swagger: [http://localhost:3001/api/docs](http://localhost:3001/api/docs)
+- Health: `GET /api/health`
 
-To learn more about Next.js, take a look at the following resources:
+## API Overview
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Auth routes (`/api/auth/*`):
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `POST /api/auth/register` - default role is `CLIENT`; `ADMIN` is rejected
+- `POST /api/auth/login` - email + password (Passport local)
+- `POST /api/auth/refresh` - refresh token rotation
+- `GET /api/auth/me` - Bearer JWT profile
 
-## Deploy on Vercel
+Admin routes (`/api/admin/*`, ADMIN only):
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `GET /api/admin/users` - list/search users
+- `GET /api/admin/users/:uuid` - full user profile with related entities
+- `PATCH /api/admin/users/:uuid` - update allowed profile fields (email/password/telegram/deletion date are locked)
+- `DELETE /api/admin/users/:uuid` - delete user (self-delete is blocked)
+- `POST /api/admin/users/:uuid/email-change-request` - send secure email-change confirmation link to the new email
+- `POST /api/admin/users/:uuid/reactivate-account` - unfreeze account pending deletion
+- `GET /api/admin/categories` / `POST` / `PATCH /:id` / `DELETE /:id` - category CRUD
+- `GET /api/admin/company-users` - list users with `COMPANY` role
+- `GET /api/admin/company-users/:uuid` / `PATCH` / `DELETE` - company user CRUD
+- `PUT /api/admin/company-users/:uuid/company-profile` - upsert company profile
+- `GET /api/admin/company-users/:uuid/subscriptions` - company subscriptions
+- `POST /api/admin/company-users/:uuid/subscriptions` - create company-bound subscription
+- `PATCH /api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` - update company subscription
+- `DELETE /api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` - delete company subscription
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set `NEXT_PUBLIC_API_URL=http://localhost:3001/api` for the Next.js auth and admin API clients.
+
+## Admin UI Overview
+
+- `/admin` - desktop dashboard
+- `/admin/users` - users directory
+- `/admin/users/:uuid` - full user profile editor
+- `/admin/categories` - categories CRUD
+- `/admin/companies` - company users directory
+- `/admin/companies/:uuid` - company profile + subscriptions CRUD
+- `/admin/database` - interactive DB map (zoom, pan, relations)
+- `/email-change/confirm?token=...` - public confirmation page for user email change
+
+## Tests
+
+API tests:
+
+```bash
+npm run api:test
+```
+
+## Build
+
+```bash
+npm run build
+npm run api:build
+```
+
+## Docs
+
+See `docs/project-map/` for architecture, entities, routes, and services.

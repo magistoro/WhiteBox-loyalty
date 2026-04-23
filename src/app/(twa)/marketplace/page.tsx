@@ -13,9 +13,10 @@ import type { CategoryId } from "@/lib/mockData";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
 import { ArrowLeft, Coffee } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "@/components/categories/CategoryIcon";
 
 const container = {
   hidden: { opacity: 0 },
@@ -60,38 +61,36 @@ export default function MarketplacePage() {
         </p>
       </div>
 
-      {/* Category filter */}
-      <ScrollArea className="w-full whitespace-nowrap mb-6">
-        <div className="flex gap-2 pb-2">
+      {/* Category filter — native horizontal scroll (not Radix ScrollArea; see CategoryChipStrip) */}
+      <CategoryChipStrip className="mb-6">
+        <button
+          type="button"
+          onClick={() => setSelectedCategory(null)}
+          className={cn(
+            "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+            selectedCategory === null
+              ? "bg-primary text-primary-foreground"
+              : "glass border border-white/10 text-muted-foreground hover:text-foreground"
+          )}
+        >
+          All
+        </button>
+        {categories.map((cat) => (
           <button
+            key={cat.id}
             type="button"
-            onClick={() => setSelectedCategory(null)}
+            onClick={() => setSelectedCategory(cat.id)}
             className={cn(
-              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
-              selectedCategory === null
+              "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              selectedCategory === cat.id
                 ? "bg-primary text-primary-foreground"
                 : "glass border border-white/10 text-muted-foreground hover:text-foreground"
             )}
           >
-            All
+            {cat.name}
           </button>
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setSelectedCategory(cat.id)}
-              className={cn(
-                "rounded-full px-4 py-2 text-sm font-medium transition-colors",
-                selectedCategory === cat.id
-                  ? "bg-primary text-primary-foreground"
-                  : "glass border border-white/10 text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {cat.name}
-            </button>
-          ))}
-        </div>
-      </ScrollArea>
+        ))}
+      </CategoryChipStrip>
 
       <motion.ul
         variants={container}
@@ -119,7 +118,8 @@ export default function MarketplacePage() {
                           {sub.priceLabel}
                         </span>
                         {category && (
-                          <Badge variant="secondary" className="text-[10px] font-normal">
+                          <Badge variant="secondary" className="inline-flex items-center gap-1 text-[10px] font-normal">
+                            <CategoryIcon iconName={category.icon ?? "Circle"} className="h-3 w-3" />
                             {category.name}
                           </Badge>
                         )}
