@@ -176,12 +176,27 @@
 [data-side="bottom"][data-state="closed"] {
   animation: sheet-slide-out-to-bottom 0.25s ease-in;
 }
-/* Hide horizontal scrollbar for category slider */
+/*
+ * Hide scrollbars but keep overflow scrolling (chips, carousels).
+ * Windows Chrome/Edge need scrollbar-width + webkit + zero dimensions; `display:none`
+ * alone is sometimes ignored for horizontal bars.
+ */
 .hide-scrollbar {
-  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none !important; /* legacy Edge */
+  scrollbar-width: none !important; /* Firefox + Chromium 121+ */
+  -webkit-overflow-scrolling: touch; /* iOS momentum */
 }
 
 .hide-scrollbar::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.hide-scrollbar::-webkit-scrollbar-track,
+.hide-scrollbar::-webkit-scrollbar-thumb,
+.hide-scrollbar::-webkit-scrollbar-corner {
+  display: none !important;
+  background: transparent !important;
 }
 

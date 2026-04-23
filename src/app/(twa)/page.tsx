@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  categories,
+  categories as fallbackCategories,
   getTotalBalance,
   getCompaniesBySearch,
   getSubscriptionById,
@@ -13,14 +13,17 @@ import {
 import { getActiveSubscriptions } from "@/services/subscriptions/subscription.service";
 import { computeSubscriptionProgress } from "@/services/subscriptions/subscription.progress";
 import { SubscriptionProgressBar } from "@/components/subscriptions/SubscriptionProgressBar";
-import type { CategoryId } from "@/lib/mockData";
+import type { ApiCategory } from "@/lib/api/categories-client";
+import { getFavoriteCategorySlugs, getRegisteredCategories } from "@/lib/api/categories-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Wallet, ChevronRight, Search, Coffee } from "lucide-react";
+import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "@/components/categories/CategoryIcon";
 
 const container = {
   hidden: { opacity: 0 },
@@ -40,7 +43,36 @@ const HOME_LOYALTY_CARDS_PREVIEW_LIMIT = 4;
 export default function HomePage() {
   const totalBalance = getTotalBalance();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<CategoryId | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      const [apiCategories, favorites] = await Promise.all([
+        getRegisteredCategories(),
+        getFavoriteCategorySlugs(),
+      ]);
+      if (apiCategories.length > 0) {
+        setCategories(apiCategories);
+      }
+      setFavoriteSlugs(favorites);
+    })();
+  }, []);
+
+  const displayCategories = useMemo(() => {
+    const source = categories.length > 0 ? categories : fallbackCategories;
+    if (favoriteSlugs.length === 0) return source;
+    const order = new Map(favoriteSlugs.map((slug, idx) => [slug, idx]));
+    return [...source].sort((a, b) => {
+      const ai = order.get(a.slug);
+      const bi = order.get(b.slug);
+      if (ai === undefined && bi === undefined) return a.name.localeCompare(b.name);
+      if (ai === undefined) return 1;
+      if (bi === undefined) return -1;
+      return ai - bi;
+    });
+  }, [categories, favoriteSlugs]);
 
   const filteredCompanies = useMemo(
     () => getCompaniesBySearch(searchQuery, selectedCategory),
@@ -90,42 +122,39 @@ export default function HomePage() {
         initial={{ y: -8, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.08 }}
-        className="mb-4"
+        className="mb-4 min-w-0"
       >
-        <div className="overflow-x-auto hide-scrollbar">
-          <div className="flex gap-2 pb-2">
+        <CategoryChipStrip>
+          <button
+            type="button"
+            onClick={() => setSelectedCategory(null)}
+            className={cn(
+              "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              selectedCategory === null
+                ? "bg-primary text-primary-foreground"
+                : "glass border border-white/10 text-muted-foreground hover:text-foreground"
+            )}
+          >
+            All
+          </button>
+          {displayCategories.map((cat) => (
             <button
+              key={cat.id}
               type="button"
-              onClick={() => setSelectedCategory(null)}
+              onClick={() =>
+                setSelectedCategory((prev) => (prev === cat.slug ? null : cat.slug))
+              }
               className={cn(
                 "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
-                selectedCategory === null
+                selectedCategory === cat.slug
                   ? "bg-primary text-primary-foreground"
                   : "glass border border-white/10 text-muted-foreground hover:text-foreground"
               )}
             >
-              All
+              {cat.name}
             </button>
-            
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() =>
-                  setSelectedCategory((prev) => (prev === cat.id ? null : cat.id))
-                }
-                className={cn(
-                  "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
-                  selectedCategory === cat.id
-                    ? "bg-primary text-primary-foreground"
-                    : "glass border border-white/10 text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {cat.name}
-              </button>
-            ))}
-          </div>
-        </div>
+          ))}
+        </CategoryChipStrip>
       </motion.section>
 
 
@@ -180,7 +209,7 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        <div className="flex min-w-0 gap-2 overflow-x-auto overflow-y-hidden pb-2 touch-pan-x hide-scrollbar">
           {activeSubsWithDetails.slice(0, 3).map(({ sub, subscriptionId, expiresAt, renewPeriodDays }) =>
             sub ? (
               <Link key={subscriptionId} href={`/marketplace/${subscriptionId}`}>
@@ -245,7 +274,11 @@ export default function HomePage() {
                           {company.name}
                         </CardTitle>
                         {category && (
-                          <Badge variant="secondary" className="mt-1 text-[10px] font-normal">
+                          <Badge
+                            variant="secondary"
+                            className="mt-1 inline-flex items-center gap-1 text-[10px] font-normal"
+                          >
+                            <CategoryIcon iconName={category.icon ?? "Circle"} className="h-3 w-3" />
                             {category.name}
                           </Badge>
                         )}

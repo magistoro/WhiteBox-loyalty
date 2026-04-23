@@ -12,15 +12,7 @@ export interface Transaction {
   description?: string;
 }
 
-export type CategoryId =
-  | "coffee"
-  | "barber"
-  | "food"
-  | "fitness"
-  | "beauty"
-  | "pharmacy"
-  | "retail"
-  | "other";
+export type CategoryId = string;
 
 export interface Category {
   id: CategoryId;
@@ -30,14 +22,14 @@ export interface Category {
 }
 
 export const categories: Category[] = [
-  { id: "coffee", name: "Coffee", slug: "coffee" },
-  { id: "barber", name: "Barber", slug: "barber" },
-  { id: "food", name: "Food", slug: "food" },
-  { id: "fitness", name: "Fitness", slug: "fitness" },
-  { id: "beauty", name: "Beauty", slug: "beauty" },
-  { id: "pharmacy", name: "Pharmacy", slug: "pharmacy" },
-  { id: "retail", name: "Retail", slug: "retail" },
-  { id: "other", name: "Other", slug: "other" },
+  { id: "coffee", name: "Coffee", slug: "coffee", icon: "Coffee" },
+  { id: "barber", name: "Barber", slug: "barber", icon: "Scissors" },
+  { id: "food", name: "Food", slug: "food", icon: "UtensilsCrossed" },
+  { id: "fitness", name: "Fitness", slug: "fitness", icon: "Dumbbell" },
+  { id: "beauty", name: "Beauty", slug: "beauty", icon: "Sparkles" },
+  { id: "pharmacy", name: "Pharmacy", slug: "pharmacy", icon: "Pill" },
+  { id: "retail", name: "Retail", slug: "retail", icon: "ShoppingBag" },
+  { id: "other", name: "Other", slug: "other", icon: "Grid2x2" },
 ];
 
 export interface MapLocation {

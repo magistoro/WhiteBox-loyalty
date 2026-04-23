@@ -11,7 +11,7 @@ const navItems = [
   { href: "/map", label: "Map", icon: MapPin },
   { href: "/scan", label: "Scan", icon: QrCode, isFab: true },
   { href: "/history", label: "History", icon: History },
-  { href: "/settings", label: "Profile", icon: User },
+  { href: "/settings", label: "Settings", icon: User },
 ];
 
 export function BottomNav() {
@@ -54,7 +54,7 @@ export function BottomNav() {
               href === "/"
                 ? pathname === "/"
                 : href === "/settings"
-                  ? pathname === "/settings"
+                  ? pathname === "/settings" || pathname.startsWith("/settings/")
                   : pathname === href || pathname.startsWith(href + "/");
             return (
               <Link

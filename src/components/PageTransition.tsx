@@ -20,7 +20,7 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
         exit="exit"
         variants={variants}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className="min-h-full"
+        className="min-h-full min-w-0 w-full"
       >
         {children}
       </motion.div>
