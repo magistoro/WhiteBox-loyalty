@@ -1,176 +1,105 @@
-# WhiteBox — Core Entities & Types
+# WhiteBox - Core Entities and Types
 
-> Domain types, interfaces, and relationships for the loyalty wallet application.
+## Main database entities (Prisma)
 
----
+- `User`
+- `Category`
+- `Company`
+- `Subscription`
+- `UserFavoriteCategory`
+- `UserCompany`
+- `UserSubscription`
+- `RefreshToken`
+- `OAuthAccount`
+- `EmailChangeRequest`
+- `LoginEvent`
+- `LoyaltyTransaction`
+- `AuditEvent`
+- `CompanyCategory`
+- `CompanyLevelRule`
 
-## Type Definitions
+## Enum highlights
 
-### `TransactionType`
-```ts
-type TransactionType = "earn" | "spend";
-```
-Distinguishes earning points from spending/redeeming.
+- `UserRole`: `CLIENT | COMPANY | ADMIN`
+- `AccountStatus`: `ACTIVE | FROZEN_PENDING_DELETION`
+- `SubscriptionStatus`: `ACTIVE | EXPIRED | CANCELED`
+- `LoyaltyTransactionType`: `EARN | SPEND`
+- `LoyaltyTransactionStatus`: `ACTIVE | EXPIRED`
+- `SubscriptionSpendPolicy`: `EXCLUDE | INCLUDE_NO_BONUS | INCLUDE_WITH_BONUS`
+- `AuditWorkspace`: `MANAGER | DEVELOPER`
+- `AuditLevel`: `INFO | WARN | CRITICAL`
+- `AuditCategory`: `SECURITY | USER | SUBSCRIPTION | BILLING | SYSTEM`
+- `AuditResult`: `SUCCESS | BLOCKED`
 
----
+## Core relationships
 
-### `TransactionStatus`
-```ts
-type TransactionStatus = "active" | "expired";
-```
-Indicates whether points from the transaction are still usable.
+- `Category 1:N Company`
+- `Category 1:N Subscription` (optional link)
+- `Company 1:N Subscription` (optional link)
+- `User 1:N UserFavoriteCategory`
+- `User 1:N UserCompany`
+- `User 1:N UserSubscription`
+- `User 1:N RefreshToken`
+- `User 1:N OAuthAccount`
+- `User 1:N LoginEvent`
+- `User 1:N LoyaltyTransaction`
+- `Company 1:N LoyaltyTransaction`
+- `User 1:N EmailChangeRequest`
+- `User 1:1 Company` via owner relation (`managedCompany`)
+- `Company N:M Category` via `CompanyCategory`
+- `Company 1:N CompanyLevelRule`
+- `User 1:N AuditEvent` as actor
+- `User 1:N AuditEvent` as target
 
----
+## Backup payload entities
 
-### `Transaction`
-```ts
-interface Transaction {
-  id: string;
-  type: TransactionType;
-  companyId: string;
-  companyName: string;
-  amount: number;
-  date: string;           // ISO 8601
-  status: TransactionStatus;
-  description?: string;
-}
-```
-Single earn or spend event at a partner.
+DB snapshot backup (`/api/admin/backups`) serializes all operational tables:
 
----
+- `User`
+- `Category`
+- `Company`
+- `Subscription`
+- `CompanyCategory`
+- `CompanyLevelRule`
+- `UserFavoriteCategory`
+- `UserCompany`
+- `UserSubscription`
+- `RefreshToken`
+- `OAuthAccount`
+- `LoginEvent`
+- `EmailChangeRequest`
+- `LoyaltyTransaction`
+- `AuditEvent`
 
-### `CategoryId`
-```ts
-type CategoryId =
-  | "coffee" | "barber" | "food" | "fitness"
-  | "beauty" | "pharmacy" | "retail" | "other";
-```
-Enum-like IDs for partner categories.
+## Admin profile payload shape
 
----
+`GET /api/admin/users/:uuid` returns a rich object:
 
-### `Category`
-```ts
-interface Category {
-  id: CategoryId;
-  name: string;
-  slug: string;
-  icon?: string;
-}
-```
-Category metadata for partners and subscriptions.
+- base user fields (`id`, `uuid`, `email`, `role`, `accountStatus`, timestamps)
+- `hasPassword` (derived flag)
+- `favoriteCategories[]`
+- `companyLinks[]`
+- `subscriptions[]`
+- `refreshTokens[]` (latest 20)
+- `oauthAccounts[]`
+- `loginEvents[]` (latest 25)
+- `loyaltyTransactions[]` (latest 50)
+- `loginRisk` summary object
 
----
+## Frontend admin types
 
-### `MapLocation`
-```ts
-interface MapLocation {
-  lat: number;
-  lng: number;
-  address?: string;
-}
-```
-Geographic coordinates and optional address.
+Defined in `src/lib/api/admin-client.ts`:
 
----
+- `AdminUserRow` - compact list row for `/admin/users`
+- `AdminUserDetail` - full profile for `/admin/users/[uuid]`
+- `AdminUpdateUserInput` - patch payload for full CRUD updates
 
-### `Company`
-```ts
-interface Company {
-  id: string;
-  name: string;
-  categoryId: CategoryId;
-  balance: number;          // User's points at this partner
-  pointsToNextReward: number;
-  pointsPerReward: number;
-  expiringPoints?: number;
-  expiringDate?: string;    // ISO date
-  location?: MapLocation;
-  subscriptionIds?: string[];
-}
-```
-Partner / merchant with loyalty points and optional location.
+## TWA mock entities
 
----
+For current mobile surfaces, mock-driven domain helpers still exist in `src/lib/mockData.ts`:
 
-### `Subscription`
-```ts
-interface Subscription {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  priceLabel: string;
-  renewalPeriod: "day" | "week" | "month";
-  renewalLabel: string;
-  benefits: string[];
-  companyId?: string;       // Partner-specific
-  categoryId?: CategoryId;
-  image?: string;
-}
-```
-Subscription plan that can be category-wide or partner-specific.
-
----
-
-### Active Subscription (runtime shape)
-
-```ts
-{
-  subscriptionId: string;
-  activatedAt: string;      // ISO
-  expiresAt: string;
-  renewPeriodDays: number;
-  willAutoRenew: boolean;
-  status: "active" | string;
-  companyIds: string[];     // Partners where active
-}
-```
-Used for active subscriptions display (not a named export in mockData).
-
----
-
-## Entity Relationships
-
-```
-Category
-  ├── Company.categoryId
-  └── Subscription.categoryId
-
-Company
-  ├── Transaction.companyId
-  ├── Company.subscriptionIds → Subscription.id
-  └── Subscription.companyId (optional, for partner-specific plans)
-
-Subscription
-  ├── Company.subscriptionIds
-  └── ActiveSubscription.subscriptionId
-```
-
----
-
-## Mock Data Arrays
-
-| Export | Type | Count |
-|--------|------|-------|
-| `categories` | `Category[]` | 8 |
-| `companies` | `Company[]` | 19 |
-| `subscriptions` | `Subscription[]` | 6 |
-| `activeSubscriptions` | Array | 2 |
-| `transactions` | `Transaction[]` | 10 |
-
----
-
-## Key Relationships
-
-1. **Company ↔ Category**  
-   Each company has a `categoryId`; categories group companies.
-
-2. **Company ↔ Subscription**  
-   Companies list `subscriptionIds`; subscriptions can have optional `companyId`.
-
-3. **Transaction ↔ Company**  
-   Each transaction references `companyId` and `companyName`.
-
-4. **Active subscription ↔ Subscription**  
-   `subscriptionId` links to a `Subscription`; `companyIds` lists where it applies.
+- categories
+- companies
+- subscriptions
+- activeSubscriptions
+- transactions

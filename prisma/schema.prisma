@@ -1,0 +1,365 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+/// Application role: TWA loyalty app users are CLIENT; company portals & admin consoles use COMPANY / ADMIN.
+enum UserRole {
+  CLIENT
+  COMPANY
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  FROZEN_PENDING_DELETION
+}
+
+enum LoyaltyTransactionType {
+  EARN
+  SPEND
+}
+
+enum LoyaltyTransactionStatus {
+  ACTIVE
+  EXPIRED
+}
+
+enum SubscriptionSpendPolicy {
+  EXCLUDE
+  INCLUDE_NO_BONUS
+  INCLUDE_WITH_BONUS
+}
+
+enum AuditWorkspace {
+  MANAGER
+  DEVELOPER
+}
+
+enum AuditLevel {
+  INFO
+  WARN
+  CRITICAL
+}
+
+enum AuditCategory {
+  SECURITY
+  USER
+  SUBSCRIPTION
+  BILLING
+  SYSTEM
+}
+
+enum AuditResult {
+  SUCCESS
+  BLOCKED
+}
+
+model User {
+  id              Int                @id @default(autoincrement())
+  uuid            String             @unique @default(uuid())
+  telegramId      BigInt?            @unique
+  name            String
+  email           String             @unique
+  role            UserRole           @default(CLIENT)
+  /// bcrypt hash; null for Telegram-only or OAuth-only users until password is set
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  accountStatus         AccountStatus @default(ACTIVE)
+  deletionScheduledAt   DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  companyLinks  UserCompany[]
+  subscriptions UserSubscription[]
+  refreshTokens RefreshToken[]
+  oauthAccounts OAuthAccount[]
+  favoriteCategories UserFavoriteCategory[]
+  emailChangeRequests EmailChangeRequest[] @relation("EmailChangeTarget")
+  requestedEmailChanges EmailChangeRequest[] @relation("EmailChangeRequester")
+  managedCompany Company? @relation("CompanyOwner")
+  loginEvents LoginEvent[]
+  loyaltyTransactions LoyaltyTransaction[]
+  actorAuditEvents AuditEvent[] @relation("AuditActor")
+  targetAuditEvents AuditEvent[] @relation("AuditTarget")
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  slug        String    @unique
+  name        String
+  description String?
+  icon        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  companies      Company[]
+  companyCategories CompanyCategory[]
+  subscriptions  Subscription[]
+  favoredByUsers UserFavoriteCategory[]
+}
+
+model UserFavoriteCategory {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  categoryId Int
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([categoryId])
+}
+
+model Company {
+  id                Int       @id @default(autoincrement())
+  slug              String    @unique
+  name              String
+  description       String?
+  categoryId        Int
+  pointsPerReward   Int       @default(100)
+  subscriptionSpendPolicy SubscriptionSpendPolicy @default(EXCLUDE)
+  isActive          Boolean   @default(true)
+  ownerUserId       Int?      @unique
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  category          Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  categories        CompanyCategory[]
+  levelRules        CompanyLevelRule[]
+  owner             User?           @relation("CompanyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  subscriptions     Subscription[]
+  userLinks         UserCompany[]
+  loyaltyTransactions LoyaltyTransaction[]
+
+  @@index([categoryId])
+}
+
+model Subscription {
+  id             Int       @id @default(autoincrement())
+  uuid           String    @unique @default(uuid())
+  slug           String    @unique
+  name           String
+  description    String
+  price          Decimal   @db.Decimal(10, 2)
+  renewalPeriod  String
+  renewalValue   Int       @default(1)
+  renewalUnit    String    @default("month")
+  promoBonusDays Int       @default(0)
+  promoEndsAt    DateTime?
+  isActive       Boolean   @default(true)
+  companyId      Int?
+  categoryId     Int?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company        Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  category       Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  userPlans      UserSubscription[]
+
+  @@index([companyId])
+  @@index([categoryId])
+}
+
+model CompanyCategory {
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  categoryId Int
+  createdAt  DateTime @default(now())
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, categoryId])
+  @@index([categoryId])
+}
+
+model CompanyLevelRule {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  levelName       String
+  minTotalSpend   Decimal  @db.Decimal(12, 2)
+  cashbackPercent Decimal  @db.Decimal(5, 2)
+  sortOrder       Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, sortOrder])
+  @@unique([companyId, sortOrder])
+}
+
+model UserCompany {
+  id               Int       @id @default(autoincrement())
+  userId           Int
+  companyId        Int
+  balance          Int       @default(0)
+  pointsToNextReward Int?
+  expiringPoints   Int?
+  expiringDate     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+}
+
+model UserSubscription {
+  id             Int                @id @default(autoincrement())
+  userId         Int
+  subscriptionId Int
+  status         SubscriptionStatus @default(ACTIVE)
+  activatedAt    DateTime           @default(now())
+  expiresAt      DateTime?
+  willAutoRenew  Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([subscriptionId])
+}
+
+/// Rotating refresh tokens for JWT sessions (Passport/JWT strategy).
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// OAuth 2.0 provider linkage (groundwork for future OAuth / OpenID Connect).
+model OAuthAccount {
+  id                  String    @id @default(cuid())
+  provider            String
+  providerAccountId   String
+  userId              Int
+  accessToken         String?   @db.Text
+  refreshToken        String?   @db.Text
+  expiresAt           DateTime?
+  scope               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model LoginEvent {
+  id           String   @id @default(cuid())
+  userId       Int
+  ipAddress    String?
+  countryCode  String?
+  city         String?
+  userAgent    String?
+  deviceLabel  String?
+  requestId    String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model LoyaltyTransaction {
+  id          Int                      @id @default(autoincrement())
+  uuid        String                   @unique @default(uuid())
+  userId      Int
+  companyId   Int
+  type        LoyaltyTransactionType
+  status      LoyaltyTransactionStatus @default(ACTIVE)
+  amount      Int
+  description String?
+  occurredAt  DateTime                 @default(now())
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([userId, occurredAt])
+  @@index([companyId, occurredAt])
+}
+
+/// Email change workflow initiated by admin and confirmed by end user via secure token link.
+model EmailChangeRequest {
+  id                String   @id @default(cuid())
+  tokenHash         String   @unique
+  userId            Int
+  requestedByUserId Int
+  oldEmail          String
+  newEmail          String
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+  usedAt            DateTime?
+  revokedAt         DateTime?
+
+  user        User @relation("EmailChangeTarget", fields: [userId], references: [id], onDelete: Cascade)
+  requestedBy User @relation("EmailChangeRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([requestedByUserId])
+  @@index([expiresAt])
+}
+
+model AuditEvent {
+  id          String         @id @default(cuid())
+  workspace   AuditWorkspace @default(MANAGER)
+  level       AuditLevel     @default(INFO)
+  category    AuditCategory
+  action      String
+  details     String?
+  actorUserId Int?
+  actorLabel  String
+  targetUserId Int?
+  targetLabel String?
+  targetEmail String?
+  targetUuid  String?
+  result      AuditResult    @default(SUCCESS)
+  tags        String[]       @default([])
+  ipAddress   String?
+  countryCode String?
+  linkUrl     String?
+  linkLabel   String?
+  createdAt   DateTime       @default(now())
+
+  actorUser   User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  targetUser  User? @relation("AuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspace, createdAt])
+  @@index([category, createdAt])
+  @@index([level, createdAt])
+  @@index([targetUserId, createdAt])
+  @@index([targetEmail])
+  @@index([targetUuid])
+}

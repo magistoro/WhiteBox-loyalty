@@ -27,9 +27,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased dark twa bg-[var(--twa-bg)] text-foreground`}
       >
-        <div className="twa-viewport flex flex-col min-h-[100dvh]">
-          {children}
-        </div>
+        {children}
       </body>
     </html>
   );

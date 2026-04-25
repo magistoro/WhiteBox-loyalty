@@ -15,8 +15,10 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
 import { ArrowLeft, Search, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "@/components/categories/CategoryIcon";
 
 const container = {
   hidden: { opacity: 0 },
@@ -70,37 +72,37 @@ export default function CompaniesPage() {
         />
       </div>
 
-      <div className="overflow-x-auto overflow-y-hidden mb-4 -mx-4 px-4">
-        <div className="flex gap-2 pb-2 min-w-max">
+      <CategoryChipStrip className="mb-4">
+        <button
+          type="button"
+          onClick={() => setSelectedCategory(null)}
+          className={cn(
+            "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+            selectedCategory === null
+              ? "bg-primary text-primary-foreground"
+              : "glass border border-white/10 text-muted-foreground hover:text-foreground"
+          )}
+        >
+          All
+        </button>
+        {categories.map((cat) => (
           <button
+            key={cat.id}
             type="button"
-            onClick={() => setSelectedCategory(null)}
+            onClick={() =>
+              setSelectedCategory((prev) => (prev === cat.id ? null : cat.id))
+            }
             className={cn(
               "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
-              selectedCategory === null
+              selectedCategory === cat.id
                 ? "bg-primary text-primary-foreground"
                 : "glass border border-white/10 text-muted-foreground hover:text-foreground"
             )}
           >
-            All
+            {cat.name}
           </button>
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setSelectedCategory(cat.id)}
-              className={cn(
-                "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
-                selectedCategory === cat.id
-                  ? "bg-primary text-primary-foreground"
-                  : "glass border border-white/10 text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {cat.name}
-            </button>
-          ))}
-        </div>
-      </div>
+        ))}
+      </CategoryChipStrip>
 
       <motion.ul
         variants={container}
@@ -124,7 +126,11 @@ export default function CompaniesPage() {
                         {company.name}
                       </CardTitle>
                       {category && (
-                        <Badge variant="secondary" className="mt-1 text-[10px] font-normal">
+                        <Badge
+                          variant="secondary"
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] font-normal"
+                        >
+                          <CategoryIcon iconName={category.icon ?? "Circle"} className="h-3 w-3" />
                           {category.name}
                         </Badge>
                       )}

@@ -7,11 +7,11 @@ export default function TWALayout({
   children: React.ReactNode;
 }) {
   return (
-    <>
-      <main className="flex-1 overflow-x-hidden pb-24">
+    <div className="twa-viewport flex min-h-[100dvh] flex-col">
+      <main className="min-w-0 flex-1 overflow-x-hidden pb-24">
         <PageTransition>{children}</PageTransition>
       </main>
       <BottomNav />
-    </>
+    </div>
   );
 }
