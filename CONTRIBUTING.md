@@ -1,0 +1,32 @@
+# Contributing Workflow
+
+## Mandatory Git Flow
+
+To keep review quality high and preserve auditability, this project uses **PR-only** integration into `main`.
+
+Rules:
+
+- Never push feature/fix work directly to `main`.
+- Always work in a branch (`feature/*`, `fix/*`, `release/*`, etc.).
+- Open a Pull Request to `main`.
+- Repository owner performs merge manually after review.
+- Owner may leave a final merge comment in PR before/at merge.
+
+## Standard Steps
+
+1. Create/update your working branch.
+2. Commit and push branch.
+3. Open PR to `main`.
+4. Wait for owner review and manual merge.
+
+## Local Safety Guard
+
+This repository includes a local `pre-push` hook (`.githooks/pre-push`) that blocks direct pushes to `main`.
+
+If hooks are not enabled yet, run:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+After that, attempts to push directly into `main` will be rejected locally.
