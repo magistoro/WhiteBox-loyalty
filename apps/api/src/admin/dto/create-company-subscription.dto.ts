@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from "class-validator";
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from "class-validator";
 
 export class CreateCompanySubscriptionDto {
   @ApiProperty({ example: "Monthly Unlimited" })
@@ -17,10 +17,34 @@ export class CreateCompanySubscriptionDto {
   @Min(0)
   price!: number;
 
-  @ApiProperty({ example: "month" })
+  @ApiPropertyOptional({ example: "month", description: "Legacy combined period label" })
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  renewalPeriod!: string;
+  renewalPeriod?: string;
+
+  @ApiPropertyOptional({ example: 1, description: "Base renewal length value (e.g. 3 months => 3)" })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  renewalValue?: number;
+
+  @ApiPropertyOptional({ example: "month", enum: ["week", "month", "year"] })
+  @IsOptional()
+  @IsString()
+  @IsIn(["week", "month", "year"])
+  renewalUnit?: "week" | "month" | "year";
+
+  @ApiPropertyOptional({ example: 10, description: "Promo bonus days added while promo is active" })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  promoBonusDays?: number;
+
+  @ApiPropertyOptional({ example: "2026-05-01T23:59:59.000Z" })
+  @IsOptional()
+  @IsString()
+  promoEndsAt?: string;
 
   @ApiPropertyOptional({ example: "monthly-unlimited" })
   @IsOptional()

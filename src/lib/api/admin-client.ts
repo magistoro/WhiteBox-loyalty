@@ -27,6 +27,10 @@ export type AdminCompanySubscription = {
   description: string;
   price: string;
   renewalPeriod: string;
+  renewalValue: number;
+  renewalUnit: "week" | "month" | "year";
+  promoBonusDays: number;
+  promoEndsAt: string | null;
   isActive: boolean;
   categoryId: number | null;
   companyId: number;
@@ -50,9 +54,55 @@ export type AdminCompanyUser = {
     slug: string;
     description: string | null;
     categoryId: number;
+    categoryIds?: number[];
+    categories?: Array<{
+      categoryId: number;
+      category: {
+        id: number;
+        slug: string;
+        name: string;
+        icon: string;
+      };
+    }>;
     pointsPerReward: number;
+    subscriptionSpendPolicy?: "EXCLUDE" | "INCLUDE_NO_BONUS" | "INCLUDE_WITH_BONUS";
+    levelRules?: Array<{
+      id: number;
+      levelName: string;
+      minTotalSpend: string;
+      cashbackPercent: string;
+      sortOrder: number;
+    }>;
     isActive: boolean;
   } | null;
+};
+
+export type AdminCompanyClientRow = {
+  userId: number;
+  userUuid: string;
+  name: string;
+  email: string;
+  accountStatus: "ACTIVE" | "FROZEN_PENDING_DELETION";
+  userCreatedAt: string;
+  linkCreatedAt: string;
+  linkUpdatedAt: string;
+  balance: number;
+  totalEarnedPoints: number;
+  totalSpentPoints: number;
+  currentLevel: {
+    levelName: string;
+    cashbackPercent: number;
+  } | null;
+};
+
+export type AdminCompanyClientsResponse = {
+  items: AdminCompanyClientRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  sortBy: "name" | "email" | "balance" | "earned" | "spent" | "level" | "updatedAt";
+  sortDir: "asc" | "desc";
 };
 
 export type AdminUserDetail = {
@@ -183,9 +233,13 @@ export async function adminListUsers(role?: string, query?: string): Promise<Adm
   if (role) params.set("role", role);
   if (query) params.set("query", query);
   const suffix = params.toString() ? `?${params}` : "";
-  const res = await fetch(`${apiBase()}/admin/users${suffix}`, { headers: authHeaders() });
-  if (!res.ok) return [];
-  return (await res.json()) as AdminUserRow[];
+  try {
+    const res = await fetch(`${apiBase()}/admin/users${suffix}`, { headers: authHeaders() });
+    if (!res.ok) return [];
+    return (await res.json()) as AdminUserRow[];
+  } catch {
+    return [];
+  }
 }
 
 export async function adminCreateAccount(input: {
@@ -374,12 +428,46 @@ export async function adminDeleteCompanyUser(uuid: string) {
   return { ok: true as const };
 }
 
+export async function adminListCompanyClients(
+  uuid: string,
+  options?: {
+    query?: string;
+    page?: number;
+    limit?: number;
+    sortBy?: "name" | "email" | "balance" | "earned" | "spent" | "level" | "updatedAt";
+    sortDir?: "asc" | "desc";
+  },
+) {
+  const params = new URLSearchParams();
+  if (options?.query) params.set("query", options.query);
+  if (options?.page) params.set("page", String(options.page));
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.sortBy) params.set("sortBy", options.sortBy);
+  if (options?.sortDir) params.set("sortDir", options.sortDir);
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await fetch(`${apiBase()}/admin/company-users/${uuid}/clients${suffix}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch company clients" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminCompanyClientsResponse };
+}
+
 export async function adminUpsertCompanyProfile(uuid: string, input: {
   name: string;
   slug?: string;
   description?: string;
-  categoryId: number;
+  categoryId?: number;
+  categoryIds?: number[];
   pointsPerReward?: number;
+  subscriptionSpendPolicy?: "EXCLUDE" | "INCLUDE_NO_BONUS" | "INCLUDE_WITH_BONUS";
+  levelRules?: Array<{
+    levelName: string;
+    minTotalSpend: number;
+    cashbackPercent: number;
+  }>;
   isActive?: boolean;
 }) {
   const res = await fetch(`${apiBase()}/admin/company-users/${uuid}/company-profile`, {
@@ -398,7 +486,11 @@ export async function adminCreateCompanySubscription(uuid: string, input: {
   name: string;
   description: string;
   price: number;
-  renewalPeriod: string;
+  renewalPeriod?: string;
+  renewalValue?: number;
+  renewalUnit?: "week" | "month" | "year";
+  promoBonusDays?: number;
+  promoEndsAt?: string | null;
   slug?: string;
   categoryId?: number;
 }) {
@@ -422,6 +514,10 @@ export async function adminUpdateCompanySubscription(
     description: string;
     price: number;
     renewalPeriod: string;
+    renewalValue: number;
+    renewalUnit: "week" | "month" | "year";
+    promoBonusDays: number;
+    promoEndsAt: string | null;
     slug: string;
     isActive: boolean;
     categoryId: number;
@@ -452,16 +548,20 @@ export async function adminDeleteCompanySubscription(uuid: string, subscriptionU
 }
 
 export async function adminSubscriptionStats() {
-  const res = await fetch(`${apiBase()}/admin/subscriptions/stats`, {
-    headers: authHeaders(),
-  });
-  if (!res.ok) return null;
-  return (await res.json()) as {
-    total: number;
-    active: number;
-    expired: number;
-    canceled: number;
-  };
+  try {
+    const res = await fetch(`${apiBase()}/admin/subscriptions/stats`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as {
+      total: number;
+      active: number;
+      expired: number;
+      canceled: number;
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function adminFindSubscriptionByUuid(uuid: string) {

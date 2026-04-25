@@ -23,6 +23,7 @@
 | `/admin/categories` | Categories CRUD | ADMIN |
 | `/admin/companies` | Company accounts directory | ADMIN |
 | `/admin/companies/[uuid]` | Company profile + subscriptions CRUD | ADMIN |
+| `/admin/companies/[uuid]/clients` | Company clients table with search/sort/pagination + expandable details | ADMIN |
 | `/admin/subscriptions` | Subscription stats and UUID lookup | ADMIN |
 | `/admin/database` | Interactive DB schema map | ADMIN |
 | `/admin/payments` | Payments placeholder | ADMIN |
@@ -42,6 +43,7 @@
 - Left menu includes `Dashboard`, user and subscription tools, operations pages, and `Database map`.
 - Users table is read-only for role/status in-place; editing is moved to `/admin/users/[uuid]`.
 - Sensitive fields are protected in profile view: password/email are not directly editable, and account deletion schedule is read-only with explicit reactivation action.
+- Company profile uses `Min redeem` as the points threshold for allowing redemption; levels are configured separately for cashback progression.
 
 ## Key components
 

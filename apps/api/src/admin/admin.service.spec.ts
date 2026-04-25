@@ -24,6 +24,24 @@ describe("AdminService", () => {
       create: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+    };
+    companyCategory: {
+      count: jest.Mock;
+      deleteMany: jest.Mock;
+      createMany: jest.Mock;
+    };
+    companyLevelRule: {
+      deleteMany: jest.Mock;
+      createMany: jest.Mock;
+      findMany: jest.Mock;
+    };
+    userCompany: {
+      findMany: jest.Mock;
+    };
+    loyaltyTransaction: {
+      groupBy: jest.Mock;
     };
     emailChangeRequest: {
       updateMany: jest.Mock;
@@ -62,6 +80,24 @@ describe("AdminService", () => {
         create: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+      },
+      companyCategory: {
+        count: jest.fn(),
+        deleteMany: jest.fn(),
+        createMany: jest.fn(),
+      },
+      companyLevelRule: {
+        deleteMany: jest.fn(),
+        createMany: jest.fn(),
+        findMany: jest.fn(),
+      },
+      userCompany: {
+        findMany: jest.fn(),
+      },
+      loyaltyTransaction: {
+        groupBy: jest.fn(),
       },
       emailChangeRequest: {
         updateMany: jest.fn(),
@@ -235,6 +271,34 @@ describe("AdminService", () => {
     expect(result.slug).toBe("coffee");
   });
 
+  it("createCategory auto-generates unique slug suffix when slug exists", async () => {
+    prisma.category.findUnique
+      .mockResolvedValueOnce({ id: 100, slug: "coffee" })
+      .mockResolvedValueOnce(null);
+    prisma.category.create.mockImplementation(async ({ data }) => ({
+      id: 2,
+      slug: data.slug,
+      name: data.name,
+      icon: data.icon,
+    }));
+
+    const result = await service.createCategory({
+      slug: "coffee",
+      name: "Coffee",
+      icon: "Coffee",
+      description: "desc",
+    });
+
+    expect(prisma.category.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          slug: "coffee-2",
+        }),
+      }),
+    );
+    expect(result.slug).toBe("coffee-2");
+  });
+
   it("createCompanySubscription requires company profile", async () => {
     prisma.user.findUnique.mockResolvedValue({ id: 3, uuid: "c-1", role: "COMPANY", managedCompany: null });
 
@@ -268,5 +332,111 @@ describe("AdminService", () => {
 
     expect(prisma.user.delete).toHaveBeenCalledWith({ where: { uuid: "u-77" } });
     expect(result.success).toBe(true);
+  });
+
+  it("upsertCompanyProfile rejects cashback that decreases on higher levels", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 10,
+      uuid: "c-10",
+      role: "COMPANY",
+      managedCompany: {
+        id: 42,
+        levelRules: [],
+        subscriptionSpendPolicy: "EXCLUDE",
+      },
+    });
+    prisma.category.findMany.mockResolvedValue([{ id: 1 }]);
+
+    await expect(
+      service.upsertCompanyProfile("c-10", {
+        name: "Acme",
+        categoryIds: [1],
+        levelRules: [
+          { levelName: "Bronze", minTotalSpend: 0, cashbackPercent: 10 },
+          { levelName: "Silver", minTotalSpend: 1000, cashbackPercent: 5 },
+        ],
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("upsertCompanyProfile rejects min redeem below 1", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 10,
+      uuid: "c-10",
+      role: "COMPANY",
+      managedCompany: {
+        id: 42,
+        levelRules: [],
+        subscriptionSpendPolicy: "EXCLUDE",
+      },
+    });
+
+    await expect(
+      service.upsertCompanyProfile("c-10", {
+        name: "Acme",
+        categoryIds: [1],
+        pointsPerReward: 0,
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("listCompanyClients returns paginated rows and level by spent", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 2,
+      uuid: "company-u",
+      role: "COMPANY",
+      managedCompany: { id: 7 },
+    });
+    prisma.userCompany.findMany.mockResolvedValue([
+      {
+        userId: 101,
+        balance: 50,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-01-03T00:00:00.000Z"),
+        user: {
+          uuid: "u-101",
+          name: "Alice",
+          email: "alice@example.com",
+          accountStatus: "ACTIVE",
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      },
+      {
+        userId: 102,
+        balance: 40,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-01-02T00:00:00.000Z"),
+        user: {
+          uuid: "u-102",
+          name: "Bob",
+          email: "bob@example.com",
+          accountStatus: "ACTIVE",
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      },
+    ]);
+    prisma.loyaltyTransaction.groupBy.mockResolvedValue([
+      { userId: 101, type: "EARN", _sum: { amount: 500 } },
+      { userId: 101, type: "SPEND", _sum: { amount: 1500 } },
+      { userId: 102, type: "SPEND", _sum: { amount: 300 } },
+    ]);
+    prisma.companyLevelRule.findMany.mockResolvedValue([
+      { levelName: "Bronze", minTotalSpend: 0, cashbackPercent: 1 },
+      { levelName: "Silver", minTotalSpend: 1000, cashbackPercent: 3 },
+    ]);
+
+    const result = await service.listCompanyClients(
+      "company-u",
+      undefined,
+      1,
+      1,
+      "spent",
+      "desc",
+    );
+
+    expect(result.total).toBe(2);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].userUuid).toBe("u-101");
+    expect(result.items[0].currentLevel?.levelName).toBe("Silver");
   });
 });
