@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +28,20 @@ export default function AdminCategoriesPage() {
   const [draft, setDraft] = useState<CategoryDraft>(emptyDraft);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+
+  const filteredCategories = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter((cat) => {
+      return (
+        cat.slug.toLowerCase().includes(q) ||
+        cat.name.toLowerCase().includes(q) ||
+        (cat.description ?? "").toLowerCase().includes(q) ||
+        cat.icon.toLowerCase().includes(q)
+      );
+    });
+  }, [categories, query]);
 
   async function load() {
     setCategories(await adminListCategories());
@@ -105,7 +120,21 @@ export default function AdminCategoriesPage() {
           <CardTitle className="text-base">Category CRUD</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {categories.map((cat) => (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by slug, name, description, icon..."
+              className="pl-9"
+            />
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Showing {filteredCategories.length} of {categories.length} categories
+          </p>
+
+          {filteredCategories.map((cat) => (
             <div key={cat.id} className="rounded-xl border border-white/10 bg-muted/10 p-3">
               <div className="mb-3 flex items-center gap-2">
                 <div className="rounded-lg bg-primary/15 p-1.5">
@@ -129,6 +158,11 @@ export default function AdminCategoriesPage() {
               </div>
             </div>
           ))}
+          {filteredCategories.length === 0 && (
+            <div className="rounded-xl border border-white/10 bg-muted/10 p-6 text-center text-sm text-muted-foreground">
+              Nothing found for your search.
+            </div>
+          )}
         </CardContent>
       </Card>
 

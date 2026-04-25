@@ -39,6 +39,12 @@ enum LoyaltyTransactionStatus {
   EXPIRED
 }
 
+enum SubscriptionSpendPolicy {
+  EXCLUDE
+  INCLUDE_NO_BONUS
+  INCLUDE_WITH_BONUS
+}
+
 model User {
   id              Int                @id @default(autoincrement())
   uuid            String             @unique @default(uuid())
@@ -76,6 +82,7 @@ model Category {
   updatedAt   DateTime  @updatedAt
 
   companies      Company[]
+  companyCategories CompanyCategory[]
   subscriptions  Subscription[]
   favoredByUsers UserFavoriteCategory[]
 }
@@ -100,12 +107,15 @@ model Company {
   description       String?
   categoryId        Int
   pointsPerReward   Int       @default(100)
+  subscriptionSpendPolicy SubscriptionSpendPolicy @default(EXCLUDE)
   isActive          Boolean   @default(true)
   ownerUserId       Int?      @unique
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   category          Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  categories        CompanyCategory[]
+  levelRules        CompanyLevelRule[]
   owner             User?           @relation("CompanyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   subscriptions     Subscription[]
   userLinks         UserCompany[]
@@ -122,6 +132,10 @@ model Subscription {
   description    String
   price          Decimal   @db.Decimal(10, 2)
   renewalPeriod  String
+  renewalValue   Int       @default(1)
+  renewalUnit    String    @default("month")
+  promoBonusDays Int       @default(0)
+  promoEndsAt    DateTime?
   isActive       Boolean   @default(true)
   companyId      Int?
   categoryId     Int?
@@ -134,6 +148,35 @@ model Subscription {
 
   @@index([companyId])
   @@index([categoryId])
+}
+
+model CompanyCategory {
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  categoryId Int
+  createdAt  DateTime @default(now())
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, categoryId])
+  @@index([categoryId])
+}
+
+model CompanyLevelRule {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  levelName       String
+  minTotalSpend   Decimal  @db.Decimal(12, 2)
+  cashbackPercent Decimal  @db.Decimal(5, 2)
+  sortOrder       Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, sortOrder])
+  @@unique([companyId, sortOrder])
 }
 
 model UserCompany {

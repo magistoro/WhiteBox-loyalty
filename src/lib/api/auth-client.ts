@@ -79,36 +79,46 @@ export async function register(body: {
   email: string;
   password: string;
 }): Promise<AuthTokensResponse | { message: string | string[] }> {
-  const res = await fetch(`${apiBase()}/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    return {
-      message: data.message ?? `HTTP ${res.status}`,
-    };
+  try {
+    const res = await fetch(`${apiBase()}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        message: data.message ?? `HTTP ${res.status}`,
+      };
+    }
+    return data as AuthTokensResponse;
+  } catch {
+    return { message: "API is unavailable. Please check backend connection." };
   }
-  return data as AuthTokensResponse;
 }
 
 export async function login(body: {
   email: string;
   password: string;
 }): Promise<AuthTokensResponse | { message: string }> {
-  const res = await fetch(`${apiBase()}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    return {
-      message: Array.isArray(data.message) ? data.message.join(", ") : data.message ?? "Login failed",
-    };
+  try {
+    const res = await fetch(`${apiBase()}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        message: Array.isArray(data.message)
+          ? data.message.join(", ")
+          : data.message ?? "Login failed",
+      };
+    }
+    return data as AuthTokensResponse;
+  } catch {
+    return { message: "API is unavailable. Please check backend connection." };
   }
-  return data as AuthTokensResponse;
 }
 
 function authHeaders(): HeadersInit {

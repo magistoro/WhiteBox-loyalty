@@ -37,6 +37,7 @@ All routes require valid JWT and `ADMIN` role.
 | `/api/admin/company-users/:uuid` | DELETE | Delete company user (self-delete blocked) |
 | `/api/admin/company-users/:uuid/company-profile` | PUT | Create/update company profile for the user |
 | `/api/admin/company-users/:uuid/subscriptions` | GET | List subscriptions owned by the company |
+| `/api/admin/company-users/:uuid/clients` | GET | List company clients with loyalty stats (search, pagination, sorting) |
 | `/api/admin/company-users/:uuid/subscriptions` | POST | Create subscription for company (company required) |
 | `/api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` | PATCH | Update company subscription |
 | `/api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` | DELETE | Delete company subscription |
@@ -73,6 +74,17 @@ All routes require valid JWT and `ADMIN` role.
 - `loginRisk` (`primaryCountry`, `latestCountry`, `unusualCountries`, `shouldReview`)
 
 This powers `/admin/users/[uuid]` as a single profile workspace.
+
+## Company client analytics payload
+
+`GET /api/admin/company-users/:uuid/clients` returns:
+
+- paginated `items` + `total/page/limit/totalPages`
+- client identity fields (`userUuid`, `name`, `email`, status)
+- loyalty stats (`balance`, `totalEarnedPoints`, `totalSpentPoints`)
+- `currentLevel` calculated by **total spent points** against company level thresholds
+
+Sorting options: `name`, `email`, `balance`, `earned`, `spent`, `level`, `updatedAt`.
 
 ## Email change flow (admin-assisted)
 

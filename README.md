@@ -54,6 +54,7 @@ Admin routes (`/api/admin/*`, ADMIN only):
 - `GET /api/admin/company-users/:uuid` / `PATCH` / `DELETE` - company user CRUD
 - `PUT /api/admin/company-users/:uuid/company-profile` - upsert company profile
 - `GET /api/admin/company-users/:uuid/subscriptions` - company subscriptions
+- `GET /api/admin/company-users/:uuid/clients` - company clients with search, pagination, sorting, points stats, and current level
 - `POST /api/admin/company-users/:uuid/subscriptions` - create company-bound subscription
 - `PATCH /api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` - update company subscription
 - `DELETE /api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` - delete company subscription
@@ -68,6 +69,7 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:3001/api` for the Next.js auth and adm
 - `/admin/categories` - categories CRUD
 - `/admin/companies` - company users directory
 - `/admin/companies/:uuid` - company profile + subscriptions CRUD
+- `/admin/companies/:uuid/clients` - company clients table with search, sorting, pagination, and expandable details
 - `/admin/database` - interactive DB map (zoom, pan, relations)
 - `/email-change/confirm?token=...` - public confirmation page for user email change
 
@@ -78,6 +80,11 @@ API tests:
 ```bash
 npm run api:test
 ```
+
+## Loyalty notes
+
+- `Min redeem` (stored as `pointsPerReward`) defines the minimum points threshold from which a client can redeem points.
+- Level validation prevents invalid cashback ladders: for higher spend thresholds, cashback must stay the same or increase.
 
 ## Build
 

@@ -173,6 +173,36 @@ export class AdminController {
     return this.adminService.listCompanySubscriptions(uuid);
   }
 
+  @Get("company-users/:uuid/clients")
+  @ApiOperation({ summary: "List clients linked to this company with loyalty stats" })
+  @ApiQuery({ name: "query", required: false, type: String })
+  @ApiQuery({ name: "page", required: false, type: Number, example: 1 })
+  @ApiQuery({ name: "limit", required: false, type: Number, example: 20 })
+  @ApiQuery({
+    name: "sortBy",
+    required: false,
+    enum: ["name", "email", "balance", "earned", "spent", "level", "updatedAt"],
+  })
+  @ApiQuery({ name: "sortDir", required: false, enum: ["asc", "desc"] })
+  listCompanyClients(
+    @Param("uuid") uuid: string,
+    @Query("query") query?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+    @Query("sortBy")
+    sortBy?: "name" | "email" | "balance" | "earned" | "spent" | "level" | "updatedAt",
+    @Query("sortDir") sortDir?: "asc" | "desc",
+  ) {
+    return this.adminService.listCompanyClients(
+      uuid,
+      query,
+      Number(page),
+      Number(limit),
+      sortBy ?? "updatedAt",
+      sortDir ?? "desc",
+    );
+  }
+
   @Post("company-users/:uuid/subscriptions")
   @ApiOperation({ summary: "Create subscription for company user (company required)" })
   @ApiBody({ type: CreateCompanySubscriptionDto })
