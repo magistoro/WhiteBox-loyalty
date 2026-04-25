@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# Block direct pushes to main. Use PR workflow instead.
+# Input format (stdin) per line:
+# <local ref> <local sha1> <remote ref> <remote sha1>
+
+while read -r local_ref local_sha remote_ref remote_sha
+do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "Direct push to 'main' is blocked by project policy."
+    echo "Please push your branch and open a Pull Request to main."
+    exit 1
+  fi
+done
+
+exit 0

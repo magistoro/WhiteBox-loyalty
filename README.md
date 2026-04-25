@@ -120,3 +120,11 @@ npm run api:build
 ## Docs
 
 See `docs/project-map/` for architecture, entities, routes, and services.
+
+## Contribution Policy
+
+- PR-only workflow to `main`.
+- Direct pushes to `main` are not allowed by project policy.
+- Merge to `main` is done manually by repository owner after review.
+
+Details: see `CONTRIBUTING.md`.
