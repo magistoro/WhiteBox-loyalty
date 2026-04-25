@@ -1,15 +1,19 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
-import { Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SelectField } from "@/components/ui/select-field";
-import { adminCreateAccount, adminListUsers, type AdminUserRow } from "@/lib/api/admin-client";
+import {
+  adminCreateAccount,
+  adminListUsers,
+  type AdminUserRow,
+  type AdminUsersResponse,
+} from "@/lib/api/admin-client";
 
 type Role = "CLIENT" | "COMPANY" | "ADMIN";
 type UserSort = "name" | "email" | "role" | "status" | "createdAt";
@@ -22,72 +26,60 @@ export default function AdminUsersPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("CLIENT");
+  const [expandedUserUuid, setExpandedUserUuid] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [meta, setMeta] = useState<AdminUsersResponse>({
+    items: [],
+    total: 0,
+    page: 1,
+    limit: 10,
+    totalPages: 0,
+    sortBy: "createdAt",
+    sortDir: "desc",
+  });
   const [sortBy, setSortBy] = useState<UserSort>("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
-  const [expandedUserUuid, setExpandedUserUuid] = useState<string | null>(null);
-  const pageSize = 10;
 
-  async function load() {
-    setUsers(await adminListUsers(undefined, query));
-    setPage(1);
+  async function load(opts?: {
+    search?: string;
+    nextPage?: number;
+    nextSortBy?: UserSort;
+    nextSortDir?: "asc" | "desc";
+  }) {
+    setLoading(true);
+    const nextPage = opts?.nextPage ?? page;
+    const nextSortBy = opts?.nextSortBy ?? sortBy;
+    const nextSortDir = opts?.nextSortDir ?? sortDir;
+    const data = await adminListUsers({
+      query: opts?.search ?? query,
+      page: nextPage,
+      limit: meta.limit,
+      sortBy: nextSortBy,
+      sortDir: nextSortDir,
+    });
+    if (!data) {
+      setUsers([]);
+      setMeta((prev) => ({ ...prev, items: [], total: 0, totalPages: 0, page: 1 }));
+      setLoading(false);
+      return;
+    }
+    setUsers(data.items);
+    setMeta(data);
+    setPage(data.page);
+    setSortBy(data.sortBy);
+    setSortDir(data.sortDir);
+    setLoading(false);
   }
 
   useEffect(() => {
-    let ignore = false;
-    void (async () => {
-      const rows = await adminListUsers();
-      if (!ignore) setUsers(rows);
-    })();
-    return () => {
-      ignore = true;
-    };
+    void load({ nextPage: 1, nextSortBy: "createdAt", nextSortDir: "desc" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sortedUsers = useMemo(() => {
-    const sorted = [...users];
-    sorted.sort((a, b) => {
-      let av: string | number = "";
-      let bv: string | number = "";
-      if (sortBy === "name") {
-        av = a.name.toLowerCase();
-        bv = b.name.toLowerCase();
-      } else if (sortBy === "email") {
-        av = a.email.toLowerCase();
-        bv = b.email.toLowerCase();
-      } else if (sortBy === "role") {
-        av = a.role;
-        bv = b.role;
-      } else if (sortBy === "status") {
-        av = a.accountStatus;
-        bv = b.accountStatus;
-      } else if (sortBy === "createdAt") {
-        av = new Date(a.createdAt).getTime();
-        bv = new Date(b.createdAt).getTime();
-      }
-      if (av < bv) return sortDir === "asc" ? -1 : 1;
-      if (av > bv) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-    return sorted;
-  }, [sortBy, sortDir, users]);
-
-  const totalPages = Math.max(1, Math.ceil(sortedUsers.length / pageSize));
-  const visibleUsers = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return sortedUsers.slice(start, start + pageSize);
-  }, [page, sortedUsers]);
-
-  function onSort(next: UserSort) {
-    setSortBy((prev) => {
-      if (prev === next) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return prev;
-      }
-      setSortDir("asc");
-      return next;
-    });
-    setPage(1);
+  function onSort(column: UserSort) {
+    const nextDir: "asc" | "desc" = column === sortBy && sortDir === "asc" ? "desc" : "asc";
+    void load({ nextPage: 1, nextSortBy: column, nextSortDir: nextDir });
   }
 
   async function onCreate() {
@@ -99,7 +91,7 @@ export default function AdminUsersPage() {
     setEmail("");
     setPassword("");
     setRole("CLIENT");
-    await load();
+    await load({ nextPage: 1 });
   }
 
   return (
@@ -115,10 +107,7 @@ export default function AdminUsersPage() {
           <Input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
           <Input placeholder="Temporary password" value={password} onChange={(e) => setPassword(e.target.value)} />
           <div className="flex flex-col gap-2 sm:flex-row">
-            <SelectField
-              value={role}
-              onChange={(e) => setRole(e.target.value as Role)}
-            >
+            <SelectField value={role} onChange={(e) => setRole(e.target.value as Role)}>
               <option value="CLIENT">CLIENT</option>
               <option value="COMPANY">COMPANY</option>
               <option value="ADMIN">ADMIN</option>
@@ -145,11 +134,14 @@ export default function AdminUsersPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <Button variant="secondary" onClick={load} className="sm:min-w-28">
+            <Button variant="secondary" onClick={() => void load({ search: query, nextPage: 1 })} className="sm:min-w-28">
               Search
             </Button>
           </div>
-          {visibleUsers.length > 0 && (
+
+          {loading && <p className="text-sm text-muted-foreground">Loading users...</p>}
+
+          {!loading && users.length > 0 && (
             <div className="overflow-x-auto rounded-xl border border-white/10">
               <table className="w-full text-sm">
                 <thead>
@@ -188,7 +180,7 @@ export default function AdminUsersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleUsers.map((u) => {
+                  {users.map((u) => {
                     const expanded = expandedUserUuid === u.uuid;
                     return (
                       <Fragment key={u.uuid}>
@@ -224,15 +216,9 @@ export default function AdminUsersPage() {
                         {expanded && (
                           <tr className="border-t border-white/5 bg-muted/10">
                             <td colSpan={6} className="px-3 py-3">
-                              <div className="grid gap-2 md:grid-cols-2">
-                                <div className="rounded-lg border border-white/10 bg-background/40 p-2.5">
-                                  <p className="text-[11px] text-muted-foreground">UUID</p>
-                                  <p className="font-mono text-xs">{u.uuid}</p>
-                                </div>
-                                <div className="rounded-lg border border-white/10 bg-background/40 p-2.5">
-                                  <p className="text-[11px] text-muted-foreground">Created at</p>
-                                  <p className="text-xs">{new Date(u.createdAt).toLocaleString("ru-RU")}</p>
-                                </div>
+                              <div className="rounded-lg border border-white/10 bg-background/40 p-2.5">
+                                <p className="text-[11px] text-muted-foreground">UUID</p>
+                                <p className="font-mono text-xs">{u.uuid}</p>
                               </div>
                             </td>
                           </tr>
@@ -244,26 +230,32 @@ export default function AdminUsersPage() {
               </table>
             </div>
           )}
-          {users.length === 0 && (
+
+          {!loading && users.length === 0 && (
             <p className="pt-4 text-sm text-muted-foreground">No users found for this search.</p>
           )}
-          {users.length > 0 && (
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground">
-                Showing {visibleUsers.length} of {users.length} users · page {page} / {totalPages}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                  Prev
-                </Button>
-                <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                  Next
-                </Button>
-              </div>
+
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Showing {users.length} of {meta.total} users · page {meta.page} / {Math.max(1, meta.totalPages)}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" disabled={meta.page <= 1} onClick={() => void load({ nextPage: meta.page - 1 })}>
+                Prev
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={meta.page >= Math.max(1, meta.totalPages)}
+                onClick={() => void load({ nextPage: meta.page + 1 })}
+              >
+                Next
+              </Button>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
+

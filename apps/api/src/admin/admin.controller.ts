@@ -1,14 +1,33 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
-import { UserRole } from "@prisma/client";
+import { AuditWorkspace, UserRole } from "@prisma/client";
+import { Response } from "express";
 import { CurrentUser, type RequestUser } from "../auth/decorators/current-user.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/roles.decorator";
+import { AllowDuringMaintenance } from "../maintenance/allow-during-maintenance.decorator";
+import { MaintenanceStateService } from "../maintenance/maintenance-state.service";
 import { AdminService } from "./admin.service";
+import { CreateAuditEventDto } from "./dto/create-audit-event.dto";
+import { CreateBackupDto } from "./dto/create-backup.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { CreateCompanySubscriptionDto } from "./dto/create-company-subscription.dto";
 import { CreateAccountDto } from "./dto/create-account.dto";
 import { RequestEmailChangeDto } from "./dto/request-email-change.dto";
+import { RestoreBackupDto } from "./dto/restore-backup.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { UpdateCompanySubscriptionDto } from "./dto/update-company-subscription.dto";
 import { UpdateCompanyUserDto } from "./dto/update-company-user.dto";
@@ -27,7 +46,10 @@ import { UpsertCompanyProfileDto } from "./dto/upsert-company-profile.dto";
 @UseGuards(RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly maintenance: MaintenanceStateService,
+  ) {}
 
   @Get("profile")
   @ApiOperation({ summary: "Example protected admin route" })
@@ -49,8 +71,26 @@ export class AdminController {
   @ApiOperation({ summary: "Search users/companies by role, email, name or uuid" })
   @ApiQuery({ name: "role", required: false, enum: UserRole })
   @ApiQuery({ name: "query", required: false, type: String })
-  listUsers(@Query("role") role?: UserRole, @Query("query") query?: string) {
-    return this.adminService.listUsers(role, query);
+  @ApiQuery({ name: "page", required: false, type: Number, example: 1 })
+  @ApiQuery({ name: "limit", required: false, type: Number, example: 20 })
+  @ApiQuery({ name: "sortBy", required: false, enum: ["name", "email", "role", "status", "createdAt"] })
+  @ApiQuery({ name: "sortDir", required: false, enum: ["asc", "desc"] })
+  listUsers(
+    @Query("role") role?: UserRole,
+    @Query("query") query?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+    @Query("sortBy") sortBy?: "name" | "email" | "role" | "status" | "createdAt",
+    @Query("sortDir") sortDir?: "asc" | "desc",
+  ) {
+    return this.adminService.listUsers(
+      role,
+      query,
+      Number(page),
+      Number(limit),
+      sortBy ?? "createdAt",
+      sortDir ?? "desc",
+    );
   }
 
   @Patch("users/:uuid/role")
@@ -69,8 +109,8 @@ export class AdminController {
   @Patch("users/:uuid")
   @ApiOperation({ summary: "Update user fields by UUID (admin CRUD)" })
   @ApiBody({ type: UpdateUserDto })
-  updateUser(@Param("uuid") uuid: string, @Body() dto: UpdateUserDto) {
-    return this.adminService.updateUserByUuid(uuid, dto);
+  updateUser(@Param("uuid") uuid: string, @Body() dto: UpdateUserDto, @CurrentUser() actor: RequestUser) {
+    return this.adminService.updateUserByUuid(uuid, dto, actor.userId);
   }
 
   @Post("users/:uuid/email-change-request")
@@ -88,6 +128,12 @@ export class AdminController {
   @ApiOperation({ summary: "Delete user by UUID" })
   deleteUser(@Param("uuid") uuid: string, @CurrentUser() actor: RequestUser) {
     return this.adminService.deleteUserByUuid(uuid, actor.userId);
+  }
+
+  @Post("users/:uuid/force-logout")
+  @ApiOperation({ summary: "Revoke all active refresh sessions for user" })
+  forceLogoutUser(@Param("uuid") uuid: string, @CurrentUser() actor: RequestUser) {
+    return this.adminService.forceLogoutUserSessions(uuid, actor.userId);
   }
 
   @Post("users/:uuid/reactivate-account")
@@ -112,6 +158,108 @@ export class AdminController {
   @ApiOperation({ summary: "List categories" })
   listCategories() {
     return this.adminService.listCategories();
+  }
+
+  @Get("audit")
+  @ApiOperation({ summary: "Audit stream with workspace/tag/search filters" })
+  @ApiQuery({ name: "workspace", required: false, enum: AuditWorkspace })
+  @ApiQuery({ name: "query", required: false, type: String })
+  @ApiQuery({ name: "tag", required: false, type: String })
+  @ApiQuery({ name: "page", required: false, type: Number, example: 1 })
+  @ApiQuery({ name: "limit", required: false, type: Number, example: 40 })
+  listAudit(
+    @Query("workspace") workspace?: AuditWorkspace,
+    @Query("query") query?: string,
+    @Query("tag") tag?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.adminService.listAuditEvents({
+      workspace: workspace ?? AuditWorkspace.MANAGER,
+      query,
+      tag,
+      page: Number(page),
+      limit: Number(limit),
+    });
+  }
+
+  @Post("audit")
+  @ApiOperation({ summary: "Create manual audit event from admin UI" })
+  @ApiBody({ type: CreateAuditEventDto })
+  createAudit(@Body() dto: CreateAuditEventDto, @CurrentUser() actor: RequestUser) {
+    return this.adminService.createManualAuditEvent(actor.userId, dto);
+  }
+
+  @Get("backups")
+  @ApiOperation({ summary: "List database snapshots" })
+  listBackups() {
+    return this.adminService.listBackups();
+  }
+
+  @Post("backups")
+  @ApiOperation({ summary: "Create database snapshot" })
+  @ApiBody({ type: CreateBackupDto, required: false })
+  createBackup(@Body() dto: CreateBackupDto) {
+    return this.adminService.createBackup(dto);
+  }
+
+  @Post("backups/:backupId/restore")
+  @AllowDuringMaintenance()
+  @ApiOperation({ summary: "Restore database snapshot (destructive action)" })
+  @ApiBody({ type: RestoreBackupDto })
+  async restoreBackup(
+    @Param("backupId") backupId: string,
+    @Body() dto: RestoreBackupDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    if (!dto.confirm) {
+      throw new BadRequestException("Restore confirmation is required.");
+    }
+    this.maintenance.beginRestore({
+      backupId,
+      actorLabel: actor.email,
+    });
+    try {
+      const restored = await this.adminService.restoreBackup(backupId);
+      await this.adminService.createManualAuditEvent(actor.userId, {
+        workspace: AuditWorkspace.MANAGER,
+        category: "SYSTEM",
+        level: "WARN",
+        action: "Database backup restored",
+        targetLabel: restored.label,
+        details: `Backup ${restored.id} (${restored.kind}) restored by admin.`,
+        tags: ["BACKUP", "RESTORE"],
+        result: "SUCCESS",
+      });
+      this.maintenance.completeRestore(`Restore completed successfully: ${restored.label}`);
+      return { success: true as const, restored };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown restore error";
+      this.maintenance.failRestore(message);
+      throw error;
+    }
+  }
+
+  @Get("backups/restore-status")
+  @AllowDuringMaintenance()
+  @ApiOperation({ summary: "Get current database restore status" })
+  restoreStatus() {
+    return this.maintenance.getRestoreStatus();
+  }
+
+  @Delete("backups/:backupId")
+  @ApiOperation({ summary: "Delete database snapshot" })
+  deleteBackup(@Param("backupId") backupId: string) {
+    return this.adminService.deleteBackup(backupId);
+  }
+
+  @Get("backups/:backupId/file")
+  @ApiOperation({ summary: "Download database snapshot payload file" })
+  async downloadBackup(@Param("backupId") backupId: string, @Res() res: Response) {
+    const file = await this.adminService.getBackupFile(backupId);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename=\"${file.fileName}\"`);
+    res.send(file.content);
   }
 
   @Post("categories")

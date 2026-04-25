@@ -9,6 +9,7 @@ describe("AdminService", () => {
       findUnique: jest.Mock;
       create: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
     };
@@ -47,9 +48,17 @@ describe("AdminService", () => {
       updateMany: jest.Mock;
       create: jest.Mock;
     };
+    refreshToken: {
+      updateMany: jest.Mock;
+    };
+    auditEvent: {
+      create: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
+    };
     $transaction: jest.Mock;
-    userSubscription: { count: jest.Mock };
-    subscription: { findUnique: jest.Mock };
+    userSubscription: { count: jest.Mock; findMany: jest.Mock };
+    subscription: { findUnique: jest.Mock; count: jest.Mock };
   };
   const config = {
     get: (key: string) => {
@@ -58,6 +67,9 @@ describe("AdminService", () => {
       return undefined;
     },
   };
+  const maintenance = {
+    setRestoreStage: jest.fn(),
+  };
 
   beforeEach(() => {
     prisma = {
@@ -65,6 +77,7 @@ describe("AdminService", () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
       },
@@ -103,11 +116,19 @@ describe("AdminService", () => {
         updateMany: jest.fn(),
         create: jest.fn(),
       },
+      refreshToken: {
+        updateMany: jest.fn(),
+      },
+      auditEvent: {
+        create: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+      },
       $transaction: jest.fn().mockResolvedValue([]),
-      userSubscription: { count: jest.fn() },
-      subscription: { findUnique: jest.fn() },
+      userSubscription: { count: jest.fn(), findMany: jest.fn() },
+      subscription: { findUnique: jest.fn(), count: jest.fn() },
     };
-    service = new AdminService(prisma as never, config as never);
+    service = new AdminService(prisma as never, config as never, maintenance as never);
   });
 
   afterEach(() => {
@@ -129,6 +150,7 @@ describe("AdminService", () => {
 
   it("listUsers passes filters to prisma", async () => {
     prisma.user.findMany.mockResolvedValue([]);
+    prisma.user.count.mockResolvedValue(0);
 
     await service.listUsers(UserRole.COMPANY, "max");
 
@@ -138,7 +160,7 @@ describe("AdminService", () => {
           role: UserRole.COMPANY,
           OR: expect.any(Array),
         }),
-        take: 200,
+        take: 20,
       }),
     );
   });
@@ -164,6 +186,7 @@ describe("AdminService", () => {
       oauthAccounts: [],
       loginEvents: [],
       loyaltyTransactions: [],
+      targetAuditEvents: [],
     });
 
     const result = await service.getUserByUuid("u-10");
@@ -199,6 +222,7 @@ describe("AdminService", () => {
         oauthAccounts: [],
         loginEvents: [],
         loyaltyTransactions: [],
+        targetAuditEvents: [],
       });
     prisma.user.update.mockResolvedValue({});
 
@@ -438,5 +462,79 @@ describe("AdminService", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].userUuid).toBe("u-101");
     expect(result.items[0].currentLevel?.levelName).toBe("Silver");
+  });
+
+  it("subscriptionStats returns revenue and lifecycle analytics", async () => {
+    prisma.userSubscription.count
+      .mockResolvedValueOnce(5) // total
+      .mockResolvedValueOnce(3) // active
+      .mockResolvedValueOnce(1) // expired
+      .mockResolvedValueOnce(1) // canceled
+      .mockResolvedValueOnce(1) // expiring in 7 days
+      .mockResolvedValueOnce(4) // started in 30 days
+      .mockResolvedValueOnce(2) // started in previous 30 days
+      .mockResolvedValueOnce(1); // churned in 30 days
+    prisma.subscription.count
+      .mockResolvedValueOnce(4) // total plans
+      .mockResolvedValueOnce(3) // active plans
+      .mockResolvedValueOnce(2) // company-linked plans
+      .mockResolvedValueOnce(3); // category-linked plans
+    prisma.userSubscription.findMany.mockResolvedValue([
+      {
+        subscriptionId: 1,
+        willAutoRenew: true,
+        subscription: {
+          uuid: "s-1",
+          slug: "plan-a",
+          name: "Plan A",
+          price: 100,
+          renewalUnit: "month",
+          renewalValue: 1,
+          company: { name: "Acme" },
+        },
+      },
+      {
+        subscriptionId: 1,
+        willAutoRenew: false,
+        subscription: {
+          uuid: "s-1",
+          slug: "plan-a",
+          name: "Plan A",
+          price: 100,
+          renewalUnit: "month",
+          renewalValue: 1,
+          company: { name: "Acme" },
+        },
+      },
+      {
+        subscriptionId: 2,
+        willAutoRenew: true,
+        subscription: {
+          uuid: "s-2",
+          slug: "plan-b",
+          name: "Plan B",
+          price: 1200,
+          renewalUnit: "year",
+          renewalValue: 1,
+          company: null,
+        },
+      },
+    ]);
+
+    const result = await service.subscriptionStats();
+
+    expect(result.total).toBe(5);
+    expect(result.active).toBe(3);
+    expect(result.estimatedMonthlyRevenue).toBe(300);
+    expect(result.averageMonthlyRevenuePerActive).toBe(100);
+    expect(result.autoRenewEnabled).toBe(2);
+    expect(result.autoRenewRatePercent).toBe(66.7);
+    expect(result.startedGrowthPercent).toBe(100);
+    expect(result.catalog.inactivePlans).toBe(1);
+    expect(result.topSubscriptions[0]).toMatchObject({
+      slug: "plan-a",
+      activeSubscribers: 2,
+      estimatedMonthlyRevenue: 200,
+    });
   });
 });

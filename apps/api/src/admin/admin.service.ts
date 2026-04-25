@@ -1,8 +1,20 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { AccountStatus, Prisma, SubscriptionSpendPolicy, UserRole } from "@prisma/client";
+import { promises as fs } from "fs";
+import { join, resolve } from "path";
+import {
+  AccountStatus,
+  AuditCategory,
+  AuditLevel,
+  AuditResult,
+  AuditWorkspace,
+  Prisma,
+  SubscriptionSpendPolicy,
+  UserRole,
+} from "@prisma/client";
 import * as bcrypt from "bcrypt";
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes, randomUUID } from "crypto";
+import { MaintenanceStateService } from "../maintenance/maintenance-state.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { CreateCompanySubscriptionDto } from "./dto/create-company-subscription.dto";
@@ -18,9 +30,28 @@ export class AdminService {
   private static readonly MAX_SLUG_LENGTH = 60;
   private static readonly RENEWAL_UNITS = ["week", "month", "year"] as const;
 
+  private readonly backupTableOrder = [
+    "User",
+    "Category",
+    "Company",
+    "Subscription",
+    "CompanyCategory",
+    "CompanyLevelRule",
+    "UserFavoriteCategory",
+    "UserCompany",
+    "UserSubscription",
+    "RefreshToken",
+    "OAuthAccount",
+    "LoginEvent",
+    "EmailChangeRequest",
+    "LoyaltyTransaction",
+    "AuditEvent",
+  ] as const;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly maintenance: MaintenanceStateService,
   ) {}
 
   private slugify(value: string) {
@@ -119,6 +150,120 @@ export class AdminService {
     return base;
   }
 
+  private estimateMonthlyMultiplier(renewalUnit: string | null, renewalValue: number) {
+    const safeValue = Math.max(1, Number(renewalValue) || 1);
+    const unit = (renewalUnit ?? "").toLowerCase();
+    if (unit === "week") return (52 / 12) / safeValue;
+    if (unit === "year") return 1 / (12 * safeValue);
+    return 1 / safeValue;
+  }
+
+  private async resolveActorLabel(actorUserId?: number | null) {
+    if (!actorUserId) return "system";
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { email: true, uuid: true },
+    });
+    return actor?.email ?? actor?.uuid ?? "system";
+  }
+
+  private async createAuditEvent(input: {
+    workspace?: AuditWorkspace;
+    category: AuditCategory;
+    level?: AuditLevel;
+    action: string;
+    details?: string | null;
+    actorUserId?: number | null;
+    actorLabel?: string;
+    targetUserId?: number | null;
+    targetLabel?: string | null;
+    targetEmail?: string | null;
+    targetUuid?: string | null;
+    result?: AuditResult;
+    tags?: string[];
+    ipAddress?: string | null;
+    countryCode?: string | null;
+    linkUrl?: string | null;
+    linkLabel?: string | null;
+  }) {
+    const actorLabel = input.actorLabel ?? (await this.resolveActorLabel(input.actorUserId));
+    return this.prisma.auditEvent.create({
+      data: {
+        workspace: input.workspace ?? AuditWorkspace.MANAGER,
+        category: input.category,
+        level: input.level ?? AuditLevel.INFO,
+        action: input.action.trim(),
+        details: input.details?.trim() || null,
+        actorUserId: input.actorUserId ?? null,
+        actorLabel,
+        targetUserId: input.targetUserId ?? null,
+        targetLabel: input.targetLabel?.trim() || null,
+        targetEmail: input.targetEmail?.trim().toLowerCase() || null,
+        targetUuid: input.targetUuid?.trim() || null,
+        result: input.result ?? AuditResult.SUCCESS,
+        tags: [...new Set((input.tags ?? []).map((tag) => tag.trim().toUpperCase()).filter(Boolean))],
+        ipAddress: input.ipAddress?.trim() || null,
+        countryCode: input.countryCode?.trim().toUpperCase() || null,
+        linkUrl: input.linkUrl?.trim() || null,
+        linkLabel: input.linkLabel?.trim() || null,
+      },
+    });
+  }
+
+  private isAuditStorageUnavailable(error: unknown) {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2021" || error.code === "P2022")
+    );
+  }
+
+  private defaultGitAuditEvents() {
+    return [
+      {
+        id: "git_bootstrap_001",
+        workspace: AuditWorkspace.DEVELOPER,
+        level: AuditLevel.INFO,
+        category: AuditCategory.SYSTEM,
+        action: "Release branch pushed to GitHub",
+        details: "Branch pushed and pull request created for merge into main.",
+        actorUserId: null,
+        actorLabel: "system",
+        targetUserId: null,
+        targetLabel: "release/admin-security-crud-2026-04-24",
+        targetEmail: null,
+        targetUuid: null,
+        result: AuditResult.SUCCESS,
+        tags: ["GIT"],
+        ipAddress: null,
+        countryCode: null,
+        linkUrl: "https://github.com/magistoro/WhiteBox-loyalty/pulls",
+        linkLabel: "Open pull requests",
+        createdAt: new Date("2026-04-24T20:10:00.000Z"),
+      },
+      {
+        id: "git_bootstrap_002",
+        workspace: AuditWorkspace.DEVELOPER,
+        level: AuditLevel.INFO,
+        category: AuditCategory.SYSTEM,
+        action: "Merge to main completed",
+        details: "Release pull request was merged and release branch removed.",
+        actorUserId: null,
+        actorLabel: "system",
+        targetUserId: null,
+        targetLabel: "main",
+        targetEmail: null,
+        targetUuid: null,
+        result: AuditResult.SUCCESS,
+        tags: ["GIT"],
+        ipAddress: null,
+        countryCode: null,
+        linkUrl: "https://github.com/magistoro/WhiteBox-loyalty/commits/main",
+        linkLabel: "Open main commits",
+        createdAt: new Date("2026-04-25T08:20:00.000Z"),
+      },
+    ] as const;
+  }
+
   private normalizeCompanyCategoryIds(dto: UpsertCompanyProfileDto) {
     const fromArray = (dto.categoryIds ?? [])
       .map((id) => Number(id))
@@ -173,6 +318,376 @@ export class AdminService {
     return rules;
   }
 
+  private backupDir() {
+    const configured = this.config.get<string>("DB_BACKUP_DIR");
+    return configured
+      ? resolve(configured)
+      : resolve(process.cwd(), "backups", "db");
+  }
+
+  private backupPath(backupId: string) {
+    return join(this.backupDir(), `${backupId}.json`);
+  }
+
+  private backupMetaPath(backupId: string) {
+    return join(this.backupDir(), `${backupId}.meta.json`);
+  }
+
+  private assertBackupId(backupId: string) {
+    if (!/^[a-z0-9-]+$/i.test(backupId)) {
+      throw new BadRequestException("Invalid backup id");
+    }
+  }
+
+  private serializeSnapshotData(data: unknown) {
+    return JSON.stringify(
+      data,
+      (_key, value) => {
+        if (typeof value === "bigint") return value.toString();
+        return value;
+      },
+      2,
+    );
+  }
+
+  private async ensureBackupDir() {
+    await fs.mkdir(this.backupDir(), { recursive: true });
+  }
+
+  private async readBackupMeta(backupId: string) {
+    const metaRaw = await fs.readFile(this.backupMetaPath(backupId), "utf8");
+    return JSON.parse(metaRaw) as {
+      id: string;
+      label: string;
+      kind: "CURRENT" | "SEED" | "MANUAL";
+      createdAt: string;
+      sourceDatabase: string;
+      counts: Record<string, number>;
+      file: string;
+    };
+  }
+
+  private async collectBackupRows() {
+    const [
+      users,
+      categories,
+      companies,
+      subscriptions,
+      companyCategories,
+      companyLevelRules,
+      userFavoriteCategories,
+      userCompanies,
+      userSubscriptions,
+      refreshTokens,
+      oAuthAccounts,
+      loginEvents,
+      emailChangeRequests,
+      loyaltyTransactions,
+      auditEvents,
+    ] = await Promise.all([
+      this.prisma.user.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.category.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.company.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.subscription.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.companyCategory.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.companyLevelRule.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.userFavoriteCategory.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.userCompany.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.userSubscription.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.refreshToken.findMany({ orderBy: { createdAt: "asc" } }),
+      this.prisma.oAuthAccount.findMany({ orderBy: { createdAt: "asc" } }),
+      this.prisma.loginEvent.findMany({ orderBy: { createdAt: "asc" } }),
+      this.prisma.emailChangeRequest.findMany({ orderBy: { createdAt: "asc" } }),
+      this.prisma.loyaltyTransaction.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.auditEvent.findMany({ orderBy: { createdAt: "asc" } }),
+    ]);
+
+    return {
+      User: users,
+      Category: categories,
+      Company: companies,
+      Subscription: subscriptions,
+      CompanyCategory: companyCategories,
+      CompanyLevelRule: companyLevelRules,
+      UserFavoriteCategory: userFavoriteCategories,
+      UserCompany: userCompanies,
+      UserSubscription: userSubscriptions,
+      RefreshToken: refreshTokens,
+      OAuthAccount: oAuthAccounts,
+      LoginEvent: loginEvents,
+      EmailChangeRequest: emailChangeRequests,
+      LoyaltyTransaction: loyaltyTransactions,
+      AuditEvent: auditEvents,
+    };
+  }
+
+  async listBackups() {
+    await this.ensureBackupDir();
+    const files = await fs.readdir(this.backupDir());
+    const metaFiles = files.filter((name) => name.endsWith(".meta.json"));
+    const metas = await Promise.all(
+      metaFiles.map(async (name) => {
+        const raw = await fs.readFile(join(this.backupDir(), name), "utf8");
+        return JSON.parse(raw) as {
+          id: string;
+          label: string;
+          kind: "CURRENT" | "SEED" | "MANUAL";
+          createdAt: string;
+          sourceDatabase: string;
+          counts: Record<string, number>;
+          file: string;
+        };
+      }),
+    );
+    return metas.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }
+
+  async createBackup(input?: { label?: string; kind?: "CURRENT" | "SEED" | "MANUAL" }) {
+    await this.ensureBackupDir();
+    const now = new Date();
+    const kind = input?.kind ?? "MANUAL";
+    const slugPart = (input?.label ?? kind)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "backup";
+    const backupId = `${now.toISOString().replace(/[:.]/g, "-")}-${slugPart}-${randomUUID().slice(0, 8)}`;
+
+    const data = await this.collectBackupRows();
+    const counts: Record<string, number> = Object.fromEntries(
+      this.backupTableOrder.map((name) => [name, data[name].length]),
+    );
+
+    const url = this.config.get<string>("DATABASE_URL") ?? "";
+    const sourceDatabase = (() => {
+      try {
+        return new URL(url).pathname.replace(/^\//, "") || "unknown";
+      } catch {
+        return "unknown";
+      }
+    })();
+
+    const payload = {
+      schemaVersion: 1,
+      backupId,
+      createdAt: now.toISOString(),
+      kind,
+      label: input?.label?.trim() || `${kind} snapshot`,
+      sourceDatabase,
+      counts,
+      tables: data,
+    };
+
+    const meta = {
+      id: backupId,
+      createdAt: payload.createdAt,
+      kind,
+      label: payload.label,
+      sourceDatabase,
+      counts,
+      file: `${backupId}.json`,
+    };
+
+    await fs.writeFile(this.backupPath(backupId), this.serializeSnapshotData(payload), "utf8");
+    await fs.writeFile(this.backupMetaPath(backupId), JSON.stringify(meta, null, 2), "utf8");
+    return meta;
+  }
+
+  private async restoreSequences() {
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"User"', 'id'), COALESCE((SELECT MAX(id) FROM "User"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"Category"', 'id'), COALESCE((SELECT MAX(id) FROM "Category"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"Company"', 'id'), COALESCE((SELECT MAX(id) FROM "Company"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"Subscription"', 'id'), COALESCE((SELECT MAX(id) FROM "Subscription"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"CompanyCategory"', 'id'), COALESCE((SELECT MAX(id) FROM "CompanyCategory"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"CompanyLevelRule"', 'id'), COALESCE((SELECT MAX(id) FROM "CompanyLevelRule"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"UserFavoriteCategory"', 'id'), COALESCE((SELECT MAX(id) FROM "UserFavoriteCategory"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"UserCompany"', 'id'), COALESCE((SELECT MAX(id) FROM "UserCompany"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"UserSubscription"', 'id'), COALESCE((SELECT MAX(id) FROM "UserSubscription"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"LoyaltyTransaction"', 'id'), COALESCE((SELECT MAX(id) FROM "LoyaltyTransaction"), 1), true)`,
+    );
+  }
+
+  async restoreBackup(backupId: string) {
+    this.maintenance.setRestoreStage({
+      stage: "READING_SNAPSHOT",
+      message: "Reading backup file from storage.",
+      progressPercent: 12,
+    });
+    this.assertBackupId(backupId);
+    const backupRaw = await fs.readFile(this.backupPath(backupId), "utf8");
+    this.maintenance.setRestoreStage({
+      stage: "VALIDATING_PAYLOAD",
+      message: "Validating backup payload and table structure.",
+      progressPercent: 20,
+    });
+    const backup = JSON.parse(backupRaw) as {
+      tables: {
+        User: Array<{
+          id: number;
+          uuid: string;
+          telegramId: string | null;
+          name: string;
+          email: string;
+          role: UserRole;
+          passwordHash: string | null;
+          emailVerifiedAt: string | null;
+          accountStatus: AccountStatus;
+          deletionScheduledAt: string | null;
+          createdAt: string;
+          updatedAt: string;
+        }>;
+        Category: Array<Record<string, unknown>>;
+        Company: Array<Record<string, unknown>>;
+        Subscription: Array<Record<string, unknown>>;
+        CompanyCategory: Array<Record<string, unknown>>;
+        CompanyLevelRule: Array<Record<string, unknown>>;
+        UserFavoriteCategory: Array<Record<string, unknown>>;
+        UserCompany: Array<Record<string, unknown>>;
+        UserSubscription: Array<Record<string, unknown>>;
+        RefreshToken: Array<Record<string, unknown>>;
+        OAuthAccount: Array<Record<string, unknown>>;
+        LoginEvent: Array<Record<string, unknown>>;
+        EmailChangeRequest: Array<Record<string, unknown>>;
+        LoyaltyTransaction: Array<Record<string, unknown>>;
+        AuditEvent: Array<Record<string, unknown>>;
+      };
+    };
+    const tables = backup.tables;
+    if (!tables) {
+      throw new BadRequestException("Invalid backup payload");
+    }
+
+    this.maintenance.setRestoreStage({
+      stage: "WAITING_DB_LOCK",
+      message: "Waiting for database transaction lock.",
+      progressPercent: 28,
+    });
+    await this.prisma.$transaction(async (tx) => {
+      const quotedTables = this.backupTableOrder.map((table) => `"${table}"`).join(", ");
+      await tx.$executeRawUnsafe(`LOCK TABLE ${quotedTables} IN ACCESS EXCLUSIVE MODE`);
+      this.maintenance.setRestoreStage({
+        stage: "CLEARING_TABLES",
+        message: "Clearing existing records in dependency-safe order.",
+        progressPercent: 42,
+      });
+      await tx.auditEvent.deleteMany();
+      await tx.emailChangeRequest.deleteMany();
+      await tx.loginEvent.deleteMany();
+      await tx.oAuthAccount.deleteMany();
+      await tx.refreshToken.deleteMany();
+      await tx.loyaltyTransaction.deleteMany();
+      await tx.userSubscription.deleteMany();
+      await tx.userCompany.deleteMany();
+      await tx.userFavoriteCategory.deleteMany();
+      await tx.companyLevelRule.deleteMany();
+      await tx.companyCategory.deleteMany();
+      await tx.subscription.deleteMany();
+      await tx.company.deleteMany();
+      await tx.category.deleteMany();
+      await tx.user.deleteMany();
+
+      this.maintenance.setRestoreStage({
+        stage: "RESTORING_TABLES",
+        message: "Recreating records from backup snapshot.",
+        progressPercent: 64,
+      });
+      if (tables.User.length) {
+        await tx.user.createMany({
+          data: tables.User.map((row) => ({
+            ...row,
+            telegramId: row.telegramId ? BigInt(row.telegramId) : null,
+            emailVerifiedAt: row.emailVerifiedAt ? new Date(row.emailVerifiedAt) : null,
+            deletionScheduledAt: row.deletionScheduledAt ? new Date(row.deletionScheduledAt) : null,
+            createdAt: new Date(row.createdAt),
+            updatedAt: new Date(row.updatedAt),
+          })),
+        });
+      }
+      if (tables.Category.length) await tx.category.createMany({ data: tables.Category as never });
+      if (tables.Company.length) await tx.company.createMany({ data: tables.Company as never });
+      if (tables.Subscription.length) {
+        await tx.subscription.createMany({ data: tables.Subscription as never });
+      }
+      if (tables.CompanyCategory.length) {
+        await tx.companyCategory.createMany({ data: tables.CompanyCategory as never });
+      }
+      if (tables.CompanyLevelRule.length) {
+        await tx.companyLevelRule.createMany({ data: tables.CompanyLevelRule as never });
+      }
+      if (tables.UserFavoriteCategory.length) {
+        await tx.userFavoriteCategory.createMany({ data: tables.UserFavoriteCategory as never });
+      }
+      if (tables.UserCompany.length) await tx.userCompany.createMany({ data: tables.UserCompany as never });
+      if (tables.UserSubscription.length) {
+        await tx.userSubscription.createMany({ data: tables.UserSubscription as never });
+      }
+      if (tables.RefreshToken.length) {
+        await tx.refreshToken.createMany({ data: tables.RefreshToken as never });
+      }
+      if (tables.OAuthAccount.length) {
+        await tx.oAuthAccount.createMany({ data: tables.OAuthAccount as never });
+      }
+      if (tables.LoginEvent.length) await tx.loginEvent.createMany({ data: tables.LoginEvent as never });
+      if (tables.EmailChangeRequest.length) {
+        await tx.emailChangeRequest.createMany({ data: tables.EmailChangeRequest as never });
+      }
+      if (tables.LoyaltyTransaction.length) {
+        await tx.loyaltyTransaction.createMany({ data: tables.LoyaltyTransaction as never });
+      }
+      if (tables.AuditEvent.length) await tx.auditEvent.createMany({ data: tables.AuditEvent as never });
+    });
+
+    this.maintenance.setRestoreStage({
+      stage: "RESETTING_SEQUENCES",
+      message: "Resetting PostgreSQL sequences to current max IDs.",
+      progressPercent: 88,
+    });
+    await this.restoreSequences();
+    this.maintenance.setRestoreStage({
+      stage: "FINALIZING",
+      message: "Final verification and metadata sync.",
+      progressPercent: 96,
+    });
+    return this.readBackupMeta(backupId);
+  }
+
+  async deleteBackup(backupId: string) {
+    this.assertBackupId(backupId);
+    await fs.rm(this.backupPath(backupId), { force: true });
+    await fs.rm(this.backupMetaPath(backupId), { force: true });
+    return { success: true as const };
+  }
+
+  async getBackupFile(backupId: string) {
+    this.assertBackupId(backupId);
+    const meta = await this.readBackupMeta(backupId);
+    const content = await fs.readFile(this.backupPath(backupId), "utf8");
+    return {
+      fileName: `${meta.id}.json`,
+      content,
+    };
+  }
+
   async createAccount(dto: CreateAccountDto) {
     const email = dto.email.trim().toLowerCase();
     const existing = await this.prisma.user.findUnique({ where: { email } });
@@ -199,32 +714,182 @@ export class AdminService {
     return user;
   }
 
-  async listUsers(role?: UserRole, query?: string) {
+  async listUsers(
+    role?: UserRole,
+    query?: string,
+    page = 1,
+    limit = 20,
+    sortBy: "name" | "email" | "role" | "status" | "createdAt" = "createdAt",
+    sortDir: "asc" | "desc" = "desc",
+  ) {
     const q = query?.trim().toLowerCase();
-    return this.prisma.user.findMany({
-      where: {
-        ...(role ? { role } : {}),
-        ...(q
-          ? {
-              OR: [
-                { email: { contains: q, mode: "insensitive" } },
-                { name: { contains: q, mode: "insensitive" } },
-                { uuid: { contains: q } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        uuid: true,
-        email: true,
-        name: true,
-        role: true,
-        accountStatus: true,
-        createdAt: true,
-      },
-      take: 200,
-    });
+    const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+    const safePage = Math.max(1, Number(page) || 1);
+    const where = {
+      ...(role ? { role } : {}),
+      ...(q
+        ? {
+            OR: [
+              { email: { contains: q, mode: "insensitive" as const } },
+              { name: { contains: q, mode: "insensitive" as const } },
+              { uuid: { contains: q } },
+            ],
+          }
+        : {}),
+    } satisfies Prisma.UserWhereInput;
+
+    const orderBy =
+      sortBy === "status"
+        ? ({ accountStatus: sortDir } as const)
+        : sortBy === "createdAt"
+          ? ({ createdAt: sortDir } as const)
+          : ({ [sortBy]: sortDir } as const);
+
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        orderBy,
+        select: {
+          uuid: true,
+          email: true,
+          name: true,
+          role: true,
+          accountStatus: true,
+          createdAt: true,
+        },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.ceil(total / safeLimit),
+      sortBy,
+      sortDir,
+    };
+  }
+
+  async listAuditEvents(options?: {
+    workspace?: AuditWorkspace;
+    query?: string;
+    tag?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const workspace = options?.workspace ?? AuditWorkspace.MANAGER;
+    const q = options?.query?.trim();
+    const tag = options?.tag?.trim().toUpperCase();
+    const safeLimit = Math.max(1, Math.min(200, Number(options?.limit) || 40));
+    const safePage = Math.max(1, Number(options?.page) || 1);
+
+    const where = {
+      workspace,
+      ...(tag ? { tags: { has: tag } } : {}),
+      ...(q
+        ? {
+            OR: [
+              { actorLabel: { contains: q, mode: "insensitive" as const } },
+              { action: { contains: q, mode: "insensitive" as const } },
+              { targetLabel: { contains: q, mode: "insensitive" as const } },
+              { targetEmail: { contains: q, mode: "insensitive" as const } },
+              { targetUuid: { contains: q, mode: "insensitive" as const } },
+              { details: { contains: q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    } satisfies Prisma.AuditEventWhereInput;
+
+    try {
+      const [items, total] = await Promise.all([
+        this.prisma.auditEvent.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip: (safePage - 1) * safeLimit,
+          take: safeLimit,
+        }),
+        this.prisma.auditEvent.count({ where }),
+      ]);
+
+      return {
+        items,
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
+      };
+    } catch (error) {
+      if (!this.isAuditStorageUnavailable(error)) {
+        throw error;
+      }
+      const fallback = this.defaultGitAuditEvents().filter((entry) => {
+        if (entry.workspace !== workspace) return false;
+        if (tag && !entry.tags.some((value) => value === tag)) return false;
+        if (!q) return true;
+        const normalized = q.toLowerCase();
+        return (
+          entry.action.toLowerCase().includes(normalized) ||
+          entry.actorLabel.toLowerCase().includes(normalized) ||
+          (entry.targetLabel ?? "").toLowerCase().includes(normalized) ||
+          (entry.details ?? "").toLowerCase().includes(normalized) ||
+          entry.tags.some((t) => t.toLowerCase().includes(normalized))
+        );
+      });
+      const total = fallback.length;
+      const start = (safePage - 1) * safeLimit;
+      return {
+        items: fallback.slice(start, start + safeLimit),
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
+      };
+    }
+  }
+
+  async createManualAuditEvent(
+    actorUserId: number,
+    payload: {
+      workspace?: AuditWorkspace;
+      category: AuditCategory;
+      level?: AuditLevel;
+      action: string;
+      targetLabel?: string;
+      targetEmail?: string;
+      targetUuid?: string;
+      details?: string;
+      tags?: string[];
+      result?: AuditResult;
+      linkUrl?: string;
+      linkLabel?: string;
+    },
+  ) {
+    try {
+      return await this.createAuditEvent({
+        workspace: payload.workspace ?? AuditWorkspace.MANAGER,
+        category: payload.category,
+        level: payload.level ?? AuditLevel.INFO,
+        action: payload.action,
+        details: payload.details,
+        actorUserId,
+        targetLabel: payload.targetLabel,
+        targetEmail: payload.targetEmail,
+        targetUuid: payload.targetUuid,
+        tags: payload.tags,
+        result: payload.result ?? AuditResult.SUCCESS,
+        linkUrl: payload.linkUrl,
+        linkLabel: payload.linkLabel,
+      });
+    } catch (error) {
+      if (this.isAuditStorageUnavailable(error)) {
+        throw new BadRequestException("Audit storage is not ready. Apply DB migrations and retry.");
+      }
+      throw error;
+    }
   }
 
   async updateUserRole(uuid: string, role: UserRole) {
@@ -366,6 +1031,26 @@ export class AdminService {
             },
           },
         },
+        targetAuditEvents: {
+          where: {
+            tags: { has: "CRITICAL_ACTION" },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          select: {
+            id: true,
+            action: true,
+            details: true,
+            category: true,
+            level: true,
+            result: true,
+            tags: true,
+            actorLabel: true,
+            ipAddress: true,
+            countryCode: true,
+            createdAt: true,
+          },
+        },
       },
     });
 
@@ -399,10 +1084,11 @@ export class AdminService {
           Boolean(primaryCountry && latestCountry && latestCountry !== primaryCountry) ||
           unusualCountries.length > 0,
       },
+      criticalActions: user.targetAuditEvents,
     };
   }
 
-  async updateUserByUuid(uuid: string, dto: UpdateUserDto) {
+  async updateUserByUuid(uuid: string, dto: UpdateUserDto, actorUserId?: number) {
     const existing = await this.prisma.user.findUnique({ where: { uuid } });
     if (!existing) {
       throw new NotFoundException("User not found");
@@ -429,6 +1115,10 @@ export class AdminService {
       updateData.createdAt = new Date(dto.createdAt);
     }
 
+    const shouldRecordFreezeAudit =
+      dto.accountStatus === AccountStatus.FROZEN_PENDING_DELETION &&
+      existing.accountStatus !== AccountStatus.FROZEN_PENDING_DELETION;
+
     try {
       await this.prisma.user.update({
         where: { uuid },
@@ -442,6 +1132,22 @@ export class AdminService {
         throw new ConflictException("A user with this email or telegram id already exists");
       }
       throw error;
+    }
+
+    if (shouldRecordFreezeAudit) {
+      await this.createAuditEvent({
+        workspace: AuditWorkspace.MANAGER,
+        category: AuditCategory.SECURITY,
+        level: AuditLevel.CRITICAL,
+        action: "Account frozen by admin",
+        details: "User account was set to FROZEN_PENDING_DELETION via admin panel.",
+        actorUserId: actorUserId ?? null,
+        targetUserId: existing.id,
+        targetLabel: existing.name,
+        targetEmail: existing.email,
+        targetUuid: existing.uuid,
+        tags: ["CRITICAL_ACTION", "SECURITY", "USER", "FREEZE"],
+      });
     }
 
     return this.getUserByUuid(uuid);
@@ -517,6 +1223,22 @@ export class AdminService {
       console.info(`[email-change] send to ${newEmail}: ${confirmUrl}`);
     }
 
+    await this.createAuditEvent({
+      workspace: AuditWorkspace.MANAGER,
+      category: AuditCategory.SECURITY,
+      level: AuditLevel.CRITICAL,
+      action: "Email change recovery link sent",
+      details: "Admin initiated secure email change confirmation flow.",
+      actorUserId,
+      targetUserId: target.id,
+      targetLabel: target.name,
+      targetEmail: target.email,
+      targetUuid: target.uuid,
+      tags: ["CRITICAL_ACTION", "SECURITY", "USER", "EMAIL_CHANGE"],
+      linkUrl: process.env.NODE_ENV === "production" ? null : confirmUrl,
+      linkLabel: process.env.NODE_ENV === "production" ? null : "Dev preview link",
+    });
+
     return {
       success: true as const,
       sentTo: newEmail,
@@ -536,6 +1258,31 @@ export class AdminService {
 
     await this.prisma.user.delete({ where: { uuid } });
     return { success: true as const };
+  }
+
+  async forceLogoutUserSessions(uuid: string, actorUserId: number) {
+    const target = await this.prisma.user.findUnique({ where: { uuid } });
+    if (!target) {
+      throw new NotFoundException("User not found");
+    }
+    const result = await this.prisma.refreshToken.updateMany({
+      where: { userId: target.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.createAuditEvent({
+      workspace: AuditWorkspace.MANAGER,
+      category: AuditCategory.SECURITY,
+      level: AuditLevel.CRITICAL,
+      action: "Force logout executed",
+      details: `Revoked ${result.count} active refresh token(s).`,
+      actorUserId,
+      targetUserId: target.id,
+      targetLabel: target.name,
+      targetEmail: target.email,
+      targetUuid: target.uuid,
+      tags: ["CRITICAL_ACTION", "SECURITY", "USER", "FORCE_LOGOUT"],
+    });
+    return { success: true as const, revokedSessions: result.count };
   }
 
   async listCategories() {
@@ -602,7 +1349,16 @@ export class AdminService {
     try {
       return await this.prisma.user.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          uuid: true,
+          name: true,
+          email: true,
+          role: true,
+          accountStatus: true,
+          emailVerifiedAt: true,
+          createdAt: true,
+          updatedAt: true,
           managedCompany: {
             select: {
               id: true,
@@ -640,7 +1396,16 @@ export class AdminService {
       ) {
         const fallbackRows = await this.prisma.user.findMany({
           where,
-          include: {
+          select: {
+            id: true,
+            uuid: true,
+            name: true,
+            email: true,
+            role: true,
+            accountStatus: true,
+            emailVerifiedAt: true,
+            createdAt: true,
+            updatedAt: true,
             managedCompany: {
               select: {
                 id: true,
@@ -1139,13 +1904,268 @@ export class AdminService {
   }
 
   async subscriptionStats() {
-    const [total, active, expired, canceled] = await Promise.all([
+    const now = new Date();
+    const days30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const days60Ago = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const days7Ahead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const [
+      total,
+      active,
+      expired,
+      canceled,
+      totalPlans,
+      activePlans,
+      companyLinkedPlans,
+      categoryLinkedPlans,
+      expiringIn7Days,
+      startedIn30Days,
+      startedInPrevious30Days,
+      churnedIn30Days,
+      activeAssignments,
+    ] = await Promise.all([
       this.prisma.userSubscription.count(),
       this.prisma.userSubscription.count({ where: { status: "ACTIVE" } }),
       this.prisma.userSubscription.count({ where: { status: "EXPIRED" } }),
       this.prisma.userSubscription.count({ where: { status: "CANCELED" } }),
+      this.prisma.subscription.count(),
+      this.prisma.subscription.count({ where: { isActive: true } }),
+      this.prisma.subscription.count({ where: { companyId: { not: null } } }),
+      this.prisma.subscription.count({ where: { categoryId: { not: null } } }),
+      this.prisma.userSubscription.count({
+        where: {
+          status: "ACTIVE",
+          expiresAt: { gte: now, lte: days7Ahead },
+        },
+      }),
+      this.prisma.userSubscription.count({
+        where: {
+          activatedAt: { gte: days30Ago, lte: now },
+        },
+      }),
+      this.prisma.userSubscription.count({
+        where: {
+          activatedAt: { gte: days60Ago, lt: days30Ago },
+        },
+      }),
+      this.prisma.userSubscription.count({
+        where: {
+          status: { in: ["EXPIRED", "CANCELED"] },
+          updatedAt: { gte: days30Ago, lte: now },
+        },
+      }),
+      this.prisma.userSubscription.findMany({
+        where: { status: "ACTIVE" },
+        select: {
+          subscriptionId: true,
+          willAutoRenew: true,
+          subscription: {
+            select: {
+              uuid: true,
+              slug: true,
+              name: true,
+              price: true,
+              renewalUnit: true,
+              renewalValue: true,
+              company: { select: { name: true } },
+            },
+          },
+        },
+      }),
     ]);
-    return { total, active, expired, canceled };
+
+    let autoRenewEnabled = 0;
+    let estimatedMonthlyRevenue = 0;
+    const planMap = new Map<
+      number,
+      {
+        uuid: string;
+        slug: string;
+        name: string;
+        companyName: string | null;
+        activeSubscribers: number;
+        estimatedMonthlyRevenue: number;
+      }
+    >();
+
+    for (const row of activeAssignments) {
+      if (row.willAutoRenew) {
+        autoRenewEnabled += 1;
+      }
+      const price = Number(row.subscription.price ?? 0);
+      const monthly = price * this.estimateMonthlyMultiplier(
+        row.subscription.renewalUnit,
+        row.subscription.renewalValue,
+      );
+      estimatedMonthlyRevenue += monthly;
+
+      const existing = planMap.get(row.subscriptionId);
+      if (existing) {
+        existing.activeSubscribers += 1;
+        existing.estimatedMonthlyRevenue += monthly;
+      } else {
+        planMap.set(row.subscriptionId, {
+          uuid: row.subscription.uuid,
+          slug: row.subscription.slug,
+          name: row.subscription.name,
+          companyName: row.subscription.company?.name ?? null,
+          activeSubscribers: 1,
+          estimatedMonthlyRevenue: monthly,
+        });
+      }
+    }
+
+    const topSubscriptions = [...planMap.values()]
+      .sort((a, b) => {
+        if (b.activeSubscribers !== a.activeSubscribers) {
+          return b.activeSubscribers - a.activeSubscribers;
+        }
+        return b.estimatedMonthlyRevenue - a.estimatedMonthlyRevenue;
+      })
+      .slice(0, 5)
+      .map((item) => ({
+        ...item,
+        estimatedMonthlyRevenue: Number(item.estimatedMonthlyRevenue.toFixed(2)),
+      }));
+
+    const activeRatePercent = total > 0 ? (active / total) * 100 : 0;
+    const autoRenewRatePercent = active > 0 ? (autoRenewEnabled / active) * 100 : 0;
+    const averageMonthlyRevenuePerActive = active > 0 ? estimatedMonthlyRevenue / active : 0;
+    const startedGrowthPercent =
+      startedInPrevious30Days > 0
+        ? ((startedIn30Days - startedInPrevious30Days) / startedInPrevious30Days) * 100
+        : startedIn30Days > 0
+          ? 100
+          : 0;
+    const churnRatePercent = active > 0 ? (churnedIn30Days / active) * 100 : 0;
+
+    const targetAutoRenewRatePercent = 75;
+    const targetChurnRatePercent = 8;
+    const autoRenewAttainmentPercent =
+      targetAutoRenewRatePercent > 0
+        ? (autoRenewRatePercent / targetAutoRenewRatePercent) * 100
+        : 0;
+    const churnAttainmentPercent =
+      targetChurnRatePercent > 0
+        ? (targetChurnRatePercent / Math.max(churnRatePercent, 0.1)) * 100
+        : 0;
+    const autoRenewSla =
+      autoRenewRatePercent >= targetAutoRenewRatePercent
+        ? "on_track"
+        : autoRenewRatePercent >= targetAutoRenewRatePercent * 0.85
+          ? "at_risk"
+          : "off_track";
+    const churnSla =
+      churnRatePercent <= targetChurnRatePercent
+        ? "on_track"
+        : churnRatePercent <= targetChurnRatePercent * 1.3
+          ? "at_risk"
+          : "off_track";
+
+    const growthSignal = (startedGrowthPercent / 100) * 0.35;
+    const churnSignal = churnRatePercent / 100;
+    const clamp = (value: number, min: number, max: number) =>
+      Math.max(min, Math.min(max, value));
+    const baseMonthlyFactor = clamp(1 + growthSignal - churnSignal, 0.75, 1.35);
+    const optimisticMonthlyFactor = clamp(baseMonthlyFactor + 0.08, 0.8, 1.5);
+    const riskMonthlyFactor = clamp(baseMonthlyFactor - 0.12, 0.55, 1.2);
+    const project90 = (mrr: number, factor: number) =>
+      mrr * factor + mrr * factor * factor + mrr * factor * factor * factor;
+
+    const forecast = {
+      assumptions: {
+        startedGrowthPercent: Number(startedGrowthPercent.toFixed(1)),
+        churnRatePercent: Number(churnRatePercent.toFixed(1)),
+      },
+      base: {
+        days30: Number((estimatedMonthlyRevenue * baseMonthlyFactor).toFixed(2)),
+        days90: Number(project90(estimatedMonthlyRevenue, baseMonthlyFactor).toFixed(2)),
+      },
+      optimistic: {
+        days30: Number((estimatedMonthlyRevenue * optimisticMonthlyFactor).toFixed(2)),
+        days90: Number(project90(estimatedMonthlyRevenue, optimisticMonthlyFactor).toFixed(2)),
+      },
+      risk: {
+        days30: Number((estimatedMonthlyRevenue * riskMonthlyFactor).toFixed(2)),
+        days90: Number(project90(estimatedMonthlyRevenue, riskMonthlyFactor).toFixed(2)),
+      },
+    };
+
+    const totalActiveSubscribers = topSubscriptions.reduce(
+      (sum, row) => sum + row.activeSubscribers,
+      0,
+    );
+    const totalTopRevenue = topSubscriptions.reduce(
+      (sum, row) => sum + row.estimatedMonthlyRevenue,
+      0,
+    );
+    const top1 = topSubscriptions[0];
+    const top3 = topSubscriptions.slice(0, 3);
+    const top3SubscriberSharePercent =
+      totalActiveSubscribers > 0
+        ? (top3.reduce((sum, row) => sum + row.activeSubscribers, 0) / totalActiveSubscribers) *
+          100
+        : 0;
+    const top1RevenueSharePercent =
+      totalTopRevenue > 0 && top1
+        ? (top1.estimatedMonthlyRevenue / totalTopRevenue) * 100
+        : 0;
+    const concentrationScore = clamp(
+      100 - top3SubscriberSharePercent * 0.6 - top1RevenueSharePercent * 0.4,
+      0,
+      100,
+    );
+
+    return {
+      generatedAt: now.toISOString(),
+      total,
+      active,
+      expired,
+      canceled,
+      activeRatePercent: Number(activeRatePercent.toFixed(1)),
+      estimatedMonthlyRevenue: Number(estimatedMonthlyRevenue.toFixed(2)),
+      averageMonthlyRevenuePerActive: Number(averageMonthlyRevenuePerActive.toFixed(2)),
+      autoRenewEnabled,
+      autoRenewRatePercent: Number(autoRenewRatePercent.toFixed(1)),
+      expiringIn7Days,
+      churnedIn30Days,
+      startedIn30Days,
+      startedInPrevious30Days,
+      startedGrowthPercent: Number(startedGrowthPercent.toFixed(1)),
+      churnRatePercent: Number(churnRatePercent.toFixed(1)),
+      kpi: {
+        targets: {
+          autoRenewRatePercent: targetAutoRenewRatePercent,
+          churnRatePercent: targetChurnRatePercent,
+        },
+        actual: {
+          autoRenewRatePercent: Number(autoRenewRatePercent.toFixed(1)),
+          churnRatePercent: Number(churnRatePercent.toFixed(1)),
+        },
+        attainment: {
+          autoRenewPercent: Number(clamp(autoRenewAttainmentPercent, 0, 140).toFixed(1)),
+          churnPercent: Number(clamp(churnAttainmentPercent, 0, 140).toFixed(1)),
+        },
+        sla: {
+          autoRenew: autoRenewSla,
+          churn: churnSla,
+        },
+      },
+      forecast,
+      concentration: {
+        score: Number(concentrationScore.toFixed(1)),
+        top3SubscriberSharePercent: Number(top3SubscriberSharePercent.toFixed(1)),
+        top1RevenueSharePercent: Number(top1RevenueSharePercent.toFixed(1)),
+      },
+      catalog: {
+        totalPlans,
+        activePlans,
+        inactivePlans: Math.max(0, totalPlans - activePlans),
+        companyLinkedPlans,
+        categoryLinkedPlans,
+      },
+      topSubscriptions,
+    };
   }
 
   async findSubscriptionByUuid(uuid: string) {

@@ -58,8 +58,28 @@ Admin routes (`/api/admin/*`, ADMIN only):
 - `POST /api/admin/company-users/:uuid/subscriptions` - create company-bound subscription
 - `PATCH /api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` - update company subscription
 - `DELETE /api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` - delete company subscription
+- `GET /api/admin/subscriptions/stats` - subscription KPI/stats payload
+- `GET /api/admin/subscriptions/:uuid` - subscription lookup by UUID
+- `GET /api/admin/audit` - audit stream (`workspace=MANAGER|DEVELOPER`, filters by query/tag/page)
+- `POST /api/admin/audit` - create manual audit event from admin UI
+- `GET /api/admin/backups` - list DB snapshots
+- `POST /api/admin/backups` - create DB snapshot (`CURRENT | SEED | MANUAL`)
+- `GET /api/admin/backups/:backupId/file` - download snapshot payload
+- `POST /api/admin/backups/:backupId/restore` - destructive restore (requires confirmation)
+- `DELETE /api/admin/backups/:backupId` - delete snapshot
+- `GET /api/admin/backups/restore-status` - live restore process status
 
 Set `NEXT_PUBLIC_API_URL=http://localhost:3001/api` for the Next.js auth and admin API clients.
+
+## Backup and Restore Safety
+
+- During DB restore, API enters maintenance lock mode and blocks regular operations with `503`.
+- Allowed during maintenance:
+- `GET /api/health`
+- `POST /api/admin/backups/:backupId/restore`
+- `GET /api/admin/backups/restore-status`
+- Restore uses transactional flow plus DB table lock to preserve consistency.
+- Admin backup UI shows real-time restore stages and progress.
 
 ## Admin UI Overview
 
@@ -71,6 +91,10 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:3001/api` for the Next.js auth and adm
 - `/admin/companies/:uuid` - company profile + subscriptions CRUD
 - `/admin/companies/:uuid/clients` - company clients table with search, sorting, pagination, and expandable details
 - `/admin/database` - interactive DB map (zoom, pan, relations)
+- `/admin/subscriptions` - KPI/SLA dashboard + forecast analytics
+- `/admin/audit` - manager/developer audit feed
+- `/admin/audit/new` - manual audit event creation
+- `/admin/audit/backups` - save/download/restore/delete DB snapshots
 - `/email-change/confirm?token=...` - public confirmation page for user email change
 
 ## Tests

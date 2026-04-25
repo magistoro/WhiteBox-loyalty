@@ -14,14 +14,22 @@
 - `EmailChangeRequest`
 - `LoginEvent`
 - `LoyaltyTransaction`
+- `AuditEvent`
+- `CompanyCategory`
+- `CompanyLevelRule`
 
 ## Enum highlights
 
 - `UserRole`: `CLIENT | COMPANY | ADMIN`
 - `AccountStatus`: `ACTIVE | FROZEN_PENDING_DELETION`
 - `SubscriptionStatus`: `ACTIVE | EXPIRED | CANCELED`
-- `LoyaltyTransactionType`: `PURCHASE | REFUND | MANUAL_CREDIT | MANUAL_DEBIT | ADJUSTMENT`
-- `LoyaltyTransactionStatus`: `PENDING | COMPLETED | CANCELED`
+- `LoyaltyTransactionType`: `EARN | SPEND`
+- `LoyaltyTransactionStatus`: `ACTIVE | EXPIRED`
+- `SubscriptionSpendPolicy`: `EXCLUDE | INCLUDE_NO_BONUS | INCLUDE_WITH_BONUS`
+- `AuditWorkspace`: `MANAGER | DEVELOPER`
+- `AuditLevel`: `INFO | WARN | CRITICAL`
+- `AuditCategory`: `SECURITY | USER | SUBSCRIPTION | BILLING | SYSTEM`
+- `AuditResult`: `SUCCESS | BLOCKED`
 
 ## Core relationships
 
@@ -38,6 +46,30 @@
 - `Company 1:N LoyaltyTransaction`
 - `User 1:N EmailChangeRequest`
 - `User 1:1 Company` via owner relation (`managedCompany`)
+- `Company N:M Category` via `CompanyCategory`
+- `Company 1:N CompanyLevelRule`
+- `User 1:N AuditEvent` as actor
+- `User 1:N AuditEvent` as target
+
+## Backup payload entities
+
+DB snapshot backup (`/api/admin/backups`) serializes all operational tables:
+
+- `User`
+- `Category`
+- `Company`
+- `Subscription`
+- `CompanyCategory`
+- `CompanyLevelRule`
+- `UserFavoriteCategory`
+- `UserCompany`
+- `UserSubscription`
+- `RefreshToken`
+- `OAuthAccount`
+- `LoginEvent`
+- `EmailChangeRequest`
+- `LoyaltyTransaction`
+- `AuditEvent`
 
 ## Admin profile payload shape
 

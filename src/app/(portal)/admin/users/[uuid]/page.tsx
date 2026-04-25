@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   Link2,
   Mail,
@@ -23,6 +25,7 @@ import { SelectField } from "@/components/ui/select-field";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import {
   adminDeleteUser,
+  adminForceLogoutUser,
   adminGetUser,
   adminReactivateUser,
   adminRequestEmailChange,
@@ -70,6 +73,8 @@ export default function AdminUserProfilePage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [requestingEmailChange, setRequestingEmailChange] = useState(false);
+  const [forcingLogout, setForcingLogout] = useState(false);
+  const [showCriticalAudit, setShowCriticalAudit] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -206,6 +211,20 @@ export default function AdminUserProfilePage() {
     router.push("/admin/users");
   }
 
+  async function onForceLogout() {
+    if (!userUuid) return;
+    setForcingLogout(true);
+    const response = await adminForceLogoutUser(userUuid);
+    setForcingLogout(false);
+    if (!response.ok) {
+      setError(typeof response.message === "string" ? response.message : "Force logout failed.");
+      return;
+    }
+    setError(null);
+    setNotice(`Revoked sessions: ${response.data.revokedSessions}.`);
+    await loadProfile();
+  }
+
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading user profile...</p>;
   }
@@ -241,6 +260,10 @@ export default function AdminUserProfilePage() {
           <Button onClick={onSave} disabled={saving}>
             <Save className="h-4 w-4" />
             Save changes
+          </Button>
+          <Button variant="secondary" onClick={() => void onForceLogout()} disabled={forcingLogout}>
+            <ShieldCheck className="h-4 w-4" />
+            Force logout
           </Button>
           <Button variant="destructive" onClick={onDelete} disabled={deleting}>
             <Trash2 className="h-4 w-4" />
@@ -350,6 +373,42 @@ export default function AdminUserProfilePage() {
             </div>
           )}
         </CardContent>
+      </Card>
+
+      <Card className="glass border-white/10">
+        <CardHeader className="cursor-pointer" onClick={() => setShowCriticalAudit((prev) => !prev)}>
+          <CardTitle className="flex items-center justify-between text-base">
+            <span>Critical security actions</span>
+            {showCriticalAudit ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </CardTitle>
+          <CardDescription>
+            Email change, force logout, freeze and other sensitive admin actions
+          </CardDescription>
+        </CardHeader>
+        {showCriticalAudit && (
+          <CardContent className="space-y-2 text-sm">
+            {user.criticalActions.length === 0 && (
+              <p className="text-muted-foreground">No critical actions recorded yet.</p>
+            )}
+            {user.criticalActions.map((entry) => (
+              <div key={entry.id} className="rounded-xl border border-white/10 bg-muted/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">{entry.action}</p>
+                  <Badge variant={entry.result === "BLOCKED" ? "destructive" : "secondary"}>
+                    {entry.result}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {new Date(entry.createdAt).toLocaleString()} • by {entry.actorLabel}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {entry.category} • {entry.level} • {(entry.ipAddress ?? "-")} {(entry.countryCode ? `(${entry.countryCode})` : "")}
+                </p>
+                {entry.details && <p className="mt-2 text-xs text-muted-foreground">{entry.details}</p>}
+              </div>
+            ))}
+          </CardContent>
+        )}
       </Card>
 
       {(error || notice) && (

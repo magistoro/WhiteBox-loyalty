@@ -24,6 +24,7 @@ Role checks happen in two places:
 
 - Next.js middleware (`src/middleware.ts`) for route-level redirection
 - NestJS `JwtAuthMiddleware` + `RolesGuard` for API authorization
+- NestJS global `MaintenanceGuard` for restore-time API lock
 
 ## Admin architecture additions
 
@@ -33,6 +34,8 @@ Role checks happen in two places:
 - Categories workspace (`/admin/categories`) for full taxonomy CRUD.
 - Company workspace (`/admin/companies/[uuid]`) for company profile + subscription management.
 - Interactive DB map (`/admin/database`) to visualize Prisma entities and relations.
+- Audit workspace (`/admin/audit`, `/admin/audit/new`) for manager/developer events.
+- Backup workspace (`/admin/audit/backups`) for DB snapshot lifecycle.
 
 ## Data flow examples
 
@@ -50,6 +53,13 @@ Role checks happen in two places:
 2. `AdminService.getUserByUuid()` aggregates recent events.
 3. Service computes anomaly hints (`loginRisk`) from country distribution.
 4. Admin UI displays "review required" hints during manual account recovery.
+
+### Backup restore safety flow
+
+1. Admin triggers restore from `/admin/audit/backups`.
+2. Backend enters maintenance mode (global API lock) and exposes live status via `GET /api/admin/backups/restore-status`.
+3. Restore runs in transaction with table lock and staged progress updates.
+4. On success/failure, maintenance mode is released and status is finalized (`DONE` / `FAILED`).
 
 ### TWA categories
 

@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   ConflictException,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
-import { User, UserRole } from "@prisma/client";
+import { User, UserRole, type Prisma } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { createHash, randomBytes } from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
@@ -38,12 +41,153 @@ export type LoginContext = {
 };
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(AuthService.name);
+  private purgeTimer: NodeJS.Timeout | null = null;
+  private purgeInProgress = false;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
+
+  onModuleInit() {
+    const intervalMinutes = this.resolvePurgeIntervalMinutes();
+    const intervalMs = intervalMinutes * 60_000;
+    this.purgeTimer = setInterval(() => {
+      void this.runScheduledPurge();
+    }, intervalMs);
+    this.purgeTimer.unref?.();
+    void this.runScheduledPurge();
+  }
+
+  onModuleDestroy() {
+    if (this.purgeTimer) {
+      clearInterval(this.purgeTimer);
+      this.purgeTimer = null;
+    }
+  }
+
+  private resolvePurgeIntervalMinutes() {
+    const raw = Number(this.config.get("ACCOUNT_PURGE_INTERVAL_MINUTES") ?? 60);
+    if (!Number.isFinite(raw)) {
+      return 60;
+    }
+    return Math.max(1, Math.floor(raw));
+  }
+
+  private async runScheduledPurge() {
+    if (this.purgeInProgress) {
+      return;
+    }
+    this.purgeInProgress = true;
+    try {
+      const removed = await this.purgeExpiredFrozenAccounts();
+      if (removed > 0) {
+        this.logger.log(`Finalized ${removed} frozen account(s).`);
+      }
+    } catch (error) {
+      this.logger.error("Scheduled account purge failed.", error as Error);
+    } finally {
+      this.purgeInProgress = false;
+    }
+  }
+
+  /**
+   * Finalizes users that exceeded deletion recovery window.
+   * We intentionally keep historical entities (transactions/audit) and only
+   * remove personal access/profile data to preserve analytics integrity.
+   */
+  async purgeExpiredFrozenAccounts(now = new Date()) {
+    const expiredUsers = await this.prisma.user.findMany({
+      where: {
+        accountStatus: "FROZEN_PENDING_DELETION",
+        deletionScheduledAt: { lte: now },
+      },
+      select: { id: true, uuid: true },
+      take: 500,
+    });
+    if (expiredUsers.length === 0) {
+      return 0;
+    }
+
+    let finalized = 0;
+    for (const user of expiredUsers) {
+      const done = await this.finalizeExpiredFrozenAccount(user.id, now, user.uuid);
+      if (done) {
+        finalized += 1;
+      }
+    }
+    return finalized;
+  }
+
+  private deletedName(uuid: string) {
+    return `Deleted User ${uuid.slice(0, 8)}`;
+  }
+
+  private deletedEmail(uuid: string) {
+    return `deleted+${uuid.toLowerCase()}@deleted.whitebox.local`;
+  }
+
+  private async finalizeExpiredFrozenAccount(
+    userId: number,
+    now = new Date(),
+    knownUuid?: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          uuid: true,
+          accountStatus: true,
+          deletionScheduledAt: true,
+        },
+      });
+      if (
+        !user ||
+        user.accountStatus !== "FROZEN_PENDING_DELETION" ||
+        !user.deletionScheduledAt ||
+        user.deletionScheduledAt > now
+      ) {
+        return false;
+      }
+
+      const userUuid = knownUuid ?? user.uuid;
+      const dataScrubOps: Prisma.PrismaPromise<unknown>[] = [
+        tx.refreshToken.deleteMany({ where: { userId } }),
+        tx.oAuthAccount.deleteMany({ where: { userId } }),
+        tx.userFavoriteCategory.deleteMany({ where: { userId } }),
+        tx.userSubscription.deleteMany({ where: { userId } }),
+        tx.userCompany.deleteMany({ where: { userId } }),
+        tx.loginEvent.deleteMany({ where: { userId } }),
+        tx.emailChangeRequest.deleteMany({
+          where: {
+            OR: [{ userId }, { requestedByUserId: userId }],
+          },
+        }),
+        tx.company.updateMany({
+          where: { ownerUserId: userId },
+          data: { ownerUserId: null },
+        }),
+      ];
+      await Promise.all(dataScrubOps);
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          name: this.deletedName(userUuid),
+          email: this.deletedEmail(userUuid),
+          telegramId: null,
+          passwordHash: null,
+          emailVerifiedAt: null,
+          deletionScheduledAt: null,
+        },
+      });
+      return true;
+    });
+  }
 
   async register(dto: RegisterDto) {
     const role = dto.role ?? UserRole.CLIENT;
@@ -80,7 +224,7 @@ export class AuthService {
       user.deletionScheduledAt &&
       user.deletionScheduledAt <= now
     ) {
-      await this.prisma.user.delete({ where: { id: user.id } });
+      await this.finalizeExpiredFrozenAccount(user.id, now, user.uuid);
       return null;
     }
 
@@ -136,7 +280,7 @@ export class AuthService {
     }
     const now = new Date();
     if (user.deletionScheduledAt && user.deletionScheduledAt <= now) {
-      await this.prisma.user.delete({ where: { id: userId } });
+      await this.finalizeExpiredFrozenAccount(userId, now, user.uuid);
       throw new BadRequestException(
         "Recovery period has ended. This account has been permanently removed.",
       );
@@ -250,7 +394,7 @@ export class AuthService {
       user.deletionScheduledAt &&
       user.deletionScheduledAt <= now
     ) {
-      await this.prisma.user.delete({ where: { id: user.id } });
+      await this.finalizeExpiredFrozenAccount(user.id, now, user.uuid);
       return null;
     }
     return this.toSafeUser(user);

@@ -1,9 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import {
+  Eye,
+  EyeOff,
+  Minus,
+  Plus,
+  RotateCcw,
+  Shield,
+  Building2,
+  Link2,
+  ChevronDown,
+  LayoutGrid,
+  User as UserIcon,
+  Tags,
+  BadgeDollarSign,
+  GitMerge,
+  KeyRound,
+  LogIn,
+  MailCheck,
+  Wallet,
+  ClipboardList,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 type Node = {
   id: string;
@@ -21,60 +42,229 @@ type Edge = {
   label: string;
 };
 
-const NODE_W = 230;
+type SchemaPreset = {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  visibleNodes: string[];
+};
+
+const NODE_W = 240;
 const HEADER_H = 34;
 const ROW_H = 22;
 const PADDING = 8;
+const MIN_ZOOM = 0.45;
+const MAX_ZOOM = 2.5;
 
 const nodes: Node[] = [
-  { id: "User", title: "User", subtitle: "identity", fields: ["id", "uuid", "email", "role", "accountStatus"], x: 70, y: 80, color: "rgba(34,211,238,0.2)" },
-  { id: "Category", title: "Category", subtitle: "dictionary", fields: ["id", "slug", "name", "icon"], x: 420, y: 70, color: "rgba(16,185,129,0.22)" },
-  { id: "Company", title: "Company", subtitle: "partner", fields: ["id", "slug", "name", "categoryId"], x: 760, y: 80, color: "rgba(56,189,248,0.22)" },
-  { id: "Subscription", title: "Subscription", subtitle: "catalog", fields: ["id", "uuid", "slug", "companyId?", "categoryId?"], x: 1090, y: 80, color: "rgba(99,102,241,0.22)" },
-  { id: "UserFavoriteCategory", title: "UserFavoriteCategory", subtitle: "pivot", fields: ["id", "userId", "categoryId"], x: 260, y: 360, color: "rgba(20,184,166,0.22)" },
-  { id: "UserCompany", title: "UserCompany", subtitle: "pivot", fields: ["id", "userId", "companyId", "balance"], x: 630, y: 360, color: "rgba(217,70,239,0.2)" },
-  { id: "UserSubscription", title: "UserSubscription", subtitle: "pivot", fields: ["id", "userId", "subscriptionId", "status"], x: 980, y: 360, color: "rgba(139,92,246,0.22)" },
-  { id: "RefreshToken", title: "RefreshToken", subtitle: "session", fields: ["id", "tokenHash", "userId", "revokedAt?"], x: 120, y: 610, color: "rgba(251,191,36,0.22)" },
-  { id: "OAuthAccount", title: "OAuthAccount", subtitle: "federation", fields: ["id", "provider", "providerAccountId", "userId"], x: 460, y: 610, color: "rgba(251,146,60,0.22)" },
+  { id: "User", title: "User", subtitle: "identity", fields: ["id", "uuid", "telegramId?", "email", "role", "accountStatus"], x: 120, y: 120, color: "rgba(34,211,238,0.24)" },
+  { id: "Category", title: "Category", subtitle: "dictionary", fields: ["id", "slug", "name", "icon"], x: 510, y: 110, color: "rgba(16,185,129,0.24)" },
+  { id: "Company", title: "Company", subtitle: "partner", fields: ["id", "slug", "categoryId", "ownerUserId?", "subscriptionSpendPolicy"], x: 880, y: 110, color: "rgba(56,189,248,0.24)" },
+  { id: "Subscription", title: "Subscription", subtitle: "catalog", fields: ["id", "uuid", "slug", "price", "companyId?", "categoryId?"], x: 1270, y: 110, color: "rgba(99,102,241,0.24)" },
+  { id: "UserFavoriteCategory", title: "UserFavoriteCategory", subtitle: "pivot", fields: ["id", "userId", "categoryId"], x: 300, y: 390, color: "rgba(20,184,166,0.24)" },
+  { id: "CompanyCategory", title: "CompanyCategory", subtitle: "pivot", fields: ["id", "companyId", "categoryId"], x: 700, y: 390, color: "rgba(6,182,212,0.24)" },
+  { id: "CompanyLevelRule", title: "CompanyLevelRule", subtitle: "levels", fields: ["id", "companyId", "levelName", "minTotalSpend", "cashbackPercent"], x: 1030, y: 390, color: "rgba(14,165,233,0.24)" },
+  { id: "UserCompany", title: "UserCompany", subtitle: "pivot", fields: ["id", "userId", "companyId", "balance", "pointsToNextReward?"], x: 1360, y: 390, color: "rgba(217,70,239,0.22)" },
+  { id: "UserSubscription", title: "UserSubscription", subtitle: "pivot", fields: ["id", "userId", "subscriptionId", "status", "expiresAt?"], x: 1700, y: 390, color: "rgba(139,92,246,0.24)" },
+  { id: "RefreshToken", title: "RefreshToken", subtitle: "session", fields: ["id", "tokenHash", "userId", "expiresAt", "revokedAt?"], x: 120, y: 720, color: "rgba(251,191,36,0.24)" },
+  { id: "OAuthAccount", title: "OAuthAccount", subtitle: "federation", fields: ["id", "provider", "providerAccountId", "userId", "expiresAt?"], x: 450, y: 720, color: "rgba(251,146,60,0.24)" },
+  { id: "LoginEvent", title: "LoginEvent", subtitle: "security", fields: ["id", "userId", "ipAddress?", "countryCode?", "createdAt"], x: 780, y: 720, color: "rgba(249,115,22,0.24)" },
+  { id: "EmailChangeRequest", title: "EmailChangeRequest", subtitle: "security", fields: ["id", "userId", "requestedByUserId", "tokenHash", "expiresAt"], x: 1130, y: 720, color: "rgba(251,113,133,0.24)" },
+  { id: "LoyaltyTransaction", title: "LoyaltyTransaction", subtitle: "finance", fields: ["id", "uuid", "userId", "companyId", "type", "amount"], x: 1480, y: 720, color: "rgba(244,114,182,0.24)" },
+  { id: "AuditEvent", title: "AuditEvent", subtitle: "ops/security", fields: ["id", "workspace", "category", "actorUserId?", "targetUserId?", "result"], x: 1820, y: 720, color: "rgba(148,163,184,0.24)" },
 ];
 
 const edges: Edge[] = [
   { from: "Category", to: "Company", label: "1:N" },
   { from: "Category", to: "Subscription", label: "1:N" },
   { from: "Company", to: "Subscription", label: "1:N" },
+  { from: "User", to: "Company", label: "1:1 owner" },
   { from: "User", to: "UserFavoriteCategory", label: "1:N" },
   { from: "Category", to: "UserFavoriteCategory", label: "1:N" },
+  { from: "Company", to: "CompanyCategory", label: "1:N" },
+  { from: "Category", to: "CompanyCategory", label: "1:N" },
+  { from: "Company", to: "CompanyLevelRule", label: "1:N" },
   { from: "User", to: "UserCompany", label: "1:N" },
   { from: "Company", to: "UserCompany", label: "1:N" },
   { from: "User", to: "UserSubscription", label: "1:N" },
   { from: "Subscription", to: "UserSubscription", label: "1:N" },
   { from: "User", to: "RefreshToken", label: "1:N" },
   { from: "User", to: "OAuthAccount", label: "1:N" },
+  { from: "User", to: "LoginEvent", label: "1:N" },
+  { from: "User", to: "EmailChangeRequest", label: "1:N target" },
+  { from: "User", to: "EmailChangeRequest", label: "1:N requester" },
+  { from: "User", to: "LoyaltyTransaction", label: "1:N" },
+  { from: "Company", to: "LoyaltyTransaction", label: "1:N" },
+  { from: "User", to: "AuditEvent", label: "1:N actor" },
+  { from: "User", to: "AuditEvent", label: "1:N target" },
 ];
+
+const presets: SchemaPreset[] = [
+  {
+    id: "all",
+    label: "Full Schema",
+    description: "All models and all relations",
+    icon: LayoutGrid,
+    visibleNodes: nodes.map((n) => n.id),
+  },
+  {
+    id: "company-flow",
+    label: "Company + User + Subscription",
+    description: "Core business links for partner subscriptions",
+    icon: Building2,
+    visibleNodes: ["User", "Company", "Subscription", "UserCompany", "UserSubscription", "CompanyCategory", "CompanyLevelRule", "Category"],
+  },
+  {
+    id: "security",
+    label: "Security & Access",
+    description: "Auth, sessions and security events",
+    icon: Shield,
+    visibleNodes: ["User", "RefreshToken", "OAuthAccount", "LoginEvent", "EmailChangeRequest", "AuditEvent"],
+  },
+  {
+    id: "loyalty",
+    label: "Loyalty Structure",
+    description: "Categories, companies and loyalty transactions",
+    icon: Link2,
+    visibleNodes: ["User", "Category", "Company", "CompanyCategory", "UserCompany", "LoyaltyTransaction", "UserFavoriteCategory"],
+  },
+];
+
+const nodeMeta: Record<
+  string,
+  {
+    group: "core" | "links" | "security" | "finance";
+    icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
+  User: { group: "core", icon: UserIcon },
+  Category: { group: "core", icon: Tags },
+  Company: { group: "core", icon: Building2 },
+  Subscription: { group: "core", icon: BadgeDollarSign },
+  UserFavoriteCategory: { group: "links", icon: GitMerge },
+  CompanyCategory: { group: "links", icon: GitMerge },
+  CompanyLevelRule: { group: "links", icon: GitMerge },
+  UserCompany: { group: "links", icon: GitMerge },
+  UserSubscription: { group: "links", icon: GitMerge },
+  RefreshToken: { group: "security", icon: KeyRound },
+  OAuthAccount: { group: "security", icon: KeyRound },
+  LoginEvent: { group: "security", icon: LogIn },
+  EmailChangeRequest: { group: "security", icon: MailCheck },
+  LoyaltyTransaction: { group: "finance", icon: Wallet },
+  AuditEvent: { group: "finance", icon: ClipboardList },
+};
+
+const nodeGroups = [
+  { id: "core", label: "Core Models", icon: LayoutGrid },
+  { id: "links", label: "Pivot / Link Models", icon: Link2 },
+  { id: "security", label: "Security Models", icon: Shield },
+  { id: "finance", label: "Finance / Ops Models", icon: Wallet },
+] as const;
 
 function nodeHeight(node: Node) {
   return HEADER_H + node.fields.length * ROW_H + PADDING * 2;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 export default function AdminDatabasePage() {
-  const [zoom, setZoom] = useState(1);
-  const [offset, setOffset] = useState({ x: 36, y: 24 });
+  const [zoom, setZoom] = useState(0.82);
+  const [offset, setOffset] = useState({ x: 24, y: 16 });
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [hiddenNodes, setHiddenNodes] = useState<Set<string>>(new Set());
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [activePresetId, setActivePresetId] = useState<string>("all");
+  const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), []);
+  const visibleNodes = useMemo(
+    () => nodes.filter((node) => !hiddenNodes.has(node.id)),
+    [hiddenNodes],
+  );
+  const visibleEdges = useMemo(
+    () =>
+      edges.filter(
+        (edge) => !hiddenNodes.has(edge.from) && !hiddenNodes.has(edge.to),
+      ),
+    [hiddenNodes],
+  );
+
+  function setZoomAt(nextZoom: number, clientX?: number, clientY?: number) {
+    const clampedZoom = clamp(Number(nextZoom.toFixed(3)), MIN_ZOOM, MAX_ZOOM);
+    if (!viewportRef.current || clientX === undefined || clientY === undefined) {
+      setZoom(clampedZoom);
+      return;
+    }
+    const rect = viewportRef.current.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const worldX = (localX - offset.x) / zoom;
+    const worldY = (localY - offset.y) / zoom;
+    setOffset({
+      x: Math.round(localX - worldX * clampedZoom),
+      y: Math.round(localY - worldY * clampedZoom),
+    });
+    setZoom(clampedZoom);
+  }
 
   function zoomIn() {
-    setZoom((z) => Math.min(2.2, Number((z + 0.1).toFixed(2))));
+    setZoomAt(zoom + 0.1);
   }
 
   function zoomOut() {
-    setZoom((z) => Math.max(0.55, Number((z - 0.1).toFixed(2))));
+    setZoomAt(zoom - 0.1);
   }
 
   function resetView() {
-    setZoom(1);
-    setOffset({ x: 36, y: 24 });
+    setZoom(0.82);
+    setOffset({ x: 24, y: 16 });
+    setFocusedNodeId(null);
   }
+
+  function focusNode(nodeId: string) {
+    const node = byId.get(nodeId);
+    const viewport = viewportRef.current;
+    if (!node || !viewport || hiddenNodes.has(nodeId)) return;
+    const rect = viewport.getBoundingClientRect();
+    const nodeH = nodeHeight(node);
+    const centerX = node.x + NODE_W / 2;
+    const centerY = node.y + nodeH / 2;
+    setOffset({
+      x: Math.round(rect.width / 2 - centerX * zoom),
+      y: Math.round(rect.height / 2 - centerY * zoom),
+    });
+    setFocusedNodeId(node.id);
+  }
+
+  function toggleNodeVisibility(nodeId: string) {
+    setHiddenNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+    if (focusedNodeId === nodeId) {
+      setFocusedNodeId(null);
+    }
+    setActivePresetId("custom");
+  }
+
+  function applyPreset(preset: SchemaPreset) {
+    const visibleSet = new Set(preset.visibleNodes);
+    setHiddenNodes(new Set(nodes.filter((n) => !visibleSet.has(n.id)).map((n) => n.id)));
+    setActivePresetId(preset.id);
+    setPresetOpen(false);
+    setFocusedNodeId(null);
+  }
+
+  const activePresetLabel = presets.find((p) => p.id === activePresetId)?.label ?? "Custom";
 
   return (
     <div className="space-y-5">
@@ -98,22 +288,117 @@ export default function AdminDatabasePage() {
 
       <Card className="glass border-white/10">
         <CardHeader>
-          <CardTitle className="text-base">Prisma schema visualizer</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-base">Prisma schema visualizer (synced with schema.prisma)</CardTitle>
+            <div className="relative">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setPresetOpen((v) => !v)}
+                className="gap-2"
+              >
+                <LayoutGrid className="h-4 w-4" />
+                View preset: {activePresetLabel}
+                <ChevronDown className={cn("h-4 w-4 transition-transform", presetOpen && "rotate-180")} />
+              </Button>
+              {presetOpen && (
+                <div className="absolute right-0 top-10 z-20 w-80 rounded-xl border border-white/10 bg-slate-950/95 p-2 shadow-2xl backdrop-blur">
+                  {presets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      className={cn(
+                        "flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors",
+                        activePresetId === preset.id ? "bg-primary/20" : "hover:bg-white/5",
+                      )}
+                    >
+                      <span className="mt-0.5 rounded-md border border-white/10 bg-white/5 p-1.5">
+                        <preset.icon className="h-4 w-4" />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-medium">{preset.label}</span>
+                        <span className="block text-xs text-muted-foreground">{preset.description}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            {nodeGroups.map((group) => {
+              const items = nodes.filter((node) => nodeMeta[node.id]?.group === group.id);
+              if (!items.length) return null;
+              return (
+                <div key={group.id} className="rounded-xl border border-white/10 bg-muted/10 p-2.5">
+                  <div className="mb-2 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <group.icon className="h-3.5 w-3.5" />
+                    {group.label}
+                    <span className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px]">
+                      {items.length}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {items.map((node) => {
+                      const hidden = hiddenNodes.has(node.id);
+                      const NodeIcon = nodeMeta[node.id]?.icon ?? LayoutGrid;
+                      return (
+                        <div key={node.id} className="inline-flex items-center rounded-md border border-white/10 bg-muted/20 pr-1">
+                          <Button
+                            variant={focusedNodeId === node.id && !hidden ? "default" : "secondary"}
+                            size="sm"
+                            onClick={() => focusNode(node.id)}
+                            className="h-8 gap-1.5 rounded-r-none border-r border-white/10"
+                            disabled={hidden}
+                          >
+                            <NodeIcon className="h-3.5 w-3.5" />
+                            {node.id}
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={() => toggleNodeVisibility(node.id)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-r-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+                            title={hidden ? "Show table" : "Hide table"}
+                          >
+                            {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           <div
-            className="relative h-[72vh] min-h-[540px] overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_2px_2px,rgba(255,255,255,0.09)_1px,transparent_0)] [background-size:24px_24px]"
-            onMouseDown={(e) => setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y })}
+            ref={viewportRef}
+            className="relative h-[74vh] min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_2px_2px,rgba(255,255,255,0.09)_1px,transparent_0)] [background-size:24px_24px] overscroll-none touch-none"
+            onMouseDown={(e) =>
+              setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y })
+            }
             onMouseMove={(e) => {
               if (!dragStart) return;
               setOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
             }}
             onMouseUp={() => setDragStart(null)}
             onMouseLeave={() => setDragStart(null)}
+            onWheel={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const delta = e.deltaY < 0 ? 0.09 : -0.09;
+              setZoomAt(zoom + delta, e.clientX, e.clientY);
+            }}
           >
             <svg className="absolute inset-0 h-full w-full">
-              <g transform={`translate(${offset.x},${offset.y}) scale(${zoom})`}>
-                {edges.map((edge) => {
+              <g
+                style={{ transition: dragStart ? "none" : "transform 260ms ease" }}
+                transform={`translate(${offset.x},${offset.y}) scale(${zoom})`}
+              >
+                {visibleEdges.map((edge, index) => {
                   const from = byId.get(edge.from);
                   const to = byId.get(edge.to);
                   if (!from || !to) return null;
@@ -122,33 +407,66 @@ export default function AdminDatabasePage() {
                   const x2 = to.x + NODE_W / 2;
                   const y2 = to.y;
                   const cx1 = x1;
-                  const cy1 = y1 + 80;
+                  const cy1 = y1 + 90;
                   const cx2 = x2;
-                  const cy2 = y2 - 80;
-                  const midX = (x1 + x2) / 2;
+                  const cy2 = y2 - 90;
+                  const midX = (x1 + x2) / 2 + (index % 2 === 0 ? 10 : -10);
                   const midY = (y1 + y2) / 2;
                   return (
-                    <g key={`${edge.from}-${edge.to}`}>
+                    <g key={`${edge.from}-${edge.to}-${index}`}>
                       <path
                         d={`M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`}
                         fill="none"
                         stroke="rgba(186,230,253,0.45)"
                         strokeWidth="1.5"
                       />
-                      <rect x={midX - 18} y={midY - 10} width="36" height="20" rx="6" fill="rgba(15,23,42,0.8)" />
-                      <text x={midX} y={midY + 4} textAnchor="middle" fontSize="10" fill="rgba(224,242,254,0.95)">
+                      <rect
+                        x={midX - 30}
+                        y={midY - 10}
+                        width="60"
+                        height="20"
+                        rx="6"
+                        fill="rgba(15,23,42,0.88)"
+                      />
+                      <text
+                        x={midX}
+                        y={midY + 4}
+                        textAnchor="middle"
+                        fontSize="10"
+                        fill="rgba(224,242,254,0.95)"
+                      >
                         {edge.label}
                       </text>
                     </g>
                   );
                 })}
 
-                {nodes.map((node) => (
+                {visibleNodes.map((node) => (
                   <g key={node.id} transform={`translate(${node.x},${node.y})`}>
-                    <rect width={NODE_W} height={nodeHeight(node)} rx="12" fill="rgba(2,6,23,0.85)" stroke="rgba(255,255,255,0.13)" />
+                    <rect
+                      width={NODE_W}
+                      height={nodeHeight(node)}
+                      rx="12"
+                      fill="rgba(2,6,23,0.88)"
+                      stroke={
+                        focusedNodeId === node.id
+                          ? "rgba(56,189,248,0.95)"
+                          : "rgba(255,255,255,0.14)"
+                      }
+                      strokeWidth={focusedNodeId === node.id ? "2" : "1"}
+                    />
                     <rect width={NODE_W} height={HEADER_H + 2} rx="12" fill={node.color} />
-                    <text x="14" y="21" fill="white" fontSize="13" fontWeight="700">{node.title}</text>
-                    <text x="14" y="33" fill="rgba(203,213,225,0.95)" fontSize="10">{node.subtitle}</text>
+                    <text x="14" y="21" fill="white" fontSize="13" fontWeight="700">
+                      {node.title}
+                    </text>
+                    <text
+                      x="14"
+                      y="33"
+                      fill="rgba(203,213,225,0.95)"
+                      fontSize="10"
+                    >
+                      {node.subtitle}
+                    </text>
                     {node.fields.map((field, i) => (
                       <g key={field}>
                         <line
@@ -158,7 +476,12 @@ export default function AdminDatabasePage() {
                           y2={HEADER_H + PADDING + i * ROW_H}
                           stroke="rgba(255,255,255,0.07)"
                         />
-                        <text x="14" y={HEADER_H + PADDING + i * ROW_H + 15} fill="rgba(226,232,240,0.95)" fontSize="11">
+                        <text
+                          x="14"
+                          y={HEADER_H + PADDING + i * ROW_H + 15}
+                          fill="rgba(226,232,240,0.95)"
+                          fontSize="11"
+                        >
                           {field}
                         </text>
                       </g>
@@ -169,7 +492,8 @@ export default function AdminDatabasePage() {
             </svg>
 
             <div className="pointer-events-none absolute bottom-3 right-3 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1 text-xs text-muted-foreground">
-              Drag to pan • zoom: {(zoom * 100).toFixed(0)}%
+              Drag to pan | wheel to zoom | visible: {visibleNodes.length}/{nodes.length} |{" "}
+              {(zoom * 100).toFixed(0)}%
             </div>
           </div>
         </CardContent>

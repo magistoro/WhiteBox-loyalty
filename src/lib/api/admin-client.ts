@@ -9,6 +9,80 @@ export type AdminUserRow = {
   createdAt: string;
 };
 
+export type AdminUsersResponse = {
+  items: AdminUserRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  sortBy: "name" | "email" | "role" | "status" | "createdAt";
+  sortDir: "asc" | "desc";
+};
+
+export type AdminAuditRow = {
+  id: string;
+  workspace: "MANAGER" | "DEVELOPER";
+  level: "INFO" | "WARN" | "CRITICAL";
+  category: "SECURITY" | "USER" | "SUBSCRIPTION" | "BILLING" | "SYSTEM";
+  action: string;
+  details: string | null;
+  actorUserId: number | null;
+  actorLabel: string;
+  targetUserId: number | null;
+  targetLabel: string | null;
+  targetEmail: string | null;
+  targetUuid: string | null;
+  result: "SUCCESS" | "BLOCKED";
+  tags: string[];
+  ipAddress: string | null;
+  countryCode: string | null;
+  linkUrl: string | null;
+  linkLabel: string | null;
+  createdAt: string;
+};
+
+export type AdminAuditResponse = {
+  items: AdminAuditRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+};
+
+export type AdminBackupItem = {
+  id: string;
+  label: string;
+  kind: "CURRENT" | "SEED" | "MANUAL";
+  createdAt: string;
+  sourceDatabase: string;
+  counts: Record<string, number>;
+  file: string;
+};
+
+export type AdminRestoreStatus = {
+  active: boolean;
+  stage:
+    | "IDLE"
+    | "REQUESTED"
+    | "READING_SNAPSHOT"
+    | "VALIDATING_PAYLOAD"
+    | "WAITING_DB_LOCK"
+    | "CLEARING_TABLES"
+    | "RESTORING_TABLES"
+    | "RESETTING_SEQUENCES"
+    | "FINALIZING"
+    | "DONE"
+    | "FAILED";
+  progressPercent: number;
+  message: string;
+  backupId: string | null;
+  actorLabel: string | null;
+  startedAt: string | null;
+  updatedAt: string | null;
+  finishedAt: string | null;
+  errorMessage: string | null;
+};
+
 export type AdminCategory = {
   id: number;
   slug: string;
@@ -103,6 +177,81 @@ export type AdminCompanyClientsResponse = {
   totalPages: number;
   sortBy: "name" | "email" | "balance" | "earned" | "spent" | "level" | "updatedAt";
   sortDir: "asc" | "desc";
+};
+
+export type AdminSubscriptionStats = {
+  generatedAt: string;
+  total: number;
+  active: number;
+  expired: number;
+  canceled: number;
+  activeRatePercent: number;
+  estimatedMonthlyRevenue: number;
+  averageMonthlyRevenuePerActive: number;
+  autoRenewEnabled: number;
+  autoRenewRatePercent: number;
+  expiringIn7Days: number;
+  churnedIn30Days: number;
+  startedIn30Days: number;
+  startedInPrevious30Days: number;
+  startedGrowthPercent: number;
+  churnRatePercent: number;
+  kpi: {
+    targets: {
+      autoRenewRatePercent: number;
+      churnRatePercent: number;
+    };
+    actual: {
+      autoRenewRatePercent: number;
+      churnRatePercent: number;
+    };
+    attainment: {
+      autoRenewPercent: number;
+      churnPercent: number;
+    };
+    sla: {
+      autoRenew: "on_track" | "at_risk" | "off_track";
+      churn: "on_track" | "at_risk" | "off_track";
+    };
+  };
+  forecast: {
+    assumptions: {
+      startedGrowthPercent: number;
+      churnRatePercent: number;
+    };
+    base: {
+      days30: number;
+      days90: number;
+    };
+    optimistic: {
+      days30: number;
+      days90: number;
+    };
+    risk: {
+      days30: number;
+      days90: number;
+    };
+  };
+  concentration: {
+    score: number;
+    top3SubscriberSharePercent: number;
+    top1RevenueSharePercent: number;
+  };
+  catalog: {
+    totalPlans: number;
+    activePlans: number;
+    inactivePlans: number;
+    companyLinkedPlans: number;
+    categoryLinkedPlans: number;
+  };
+  topSubscriptions: Array<{
+    uuid: string;
+    slug: string;
+    name: string;
+    companyName: string | null;
+    activeSubscribers: number;
+    estimatedMonthlyRevenue: number;
+  }>;
 };
 
 export type AdminUserDetail = {
@@ -205,6 +354,19 @@ export type AdminUserDetail = {
       slug: string;
     };
   }>;
+  criticalActions: Array<{
+    id: string;
+    action: string;
+    details: string | null;
+    category: "SECURITY" | "USER" | "SUBSCRIPTION" | "BILLING" | "SYSTEM";
+    level: "INFO" | "WARN" | "CRITICAL";
+    result: "SUCCESS" | "BLOCKED";
+    tags: string[];
+    actorLabel: string;
+    ipAddress: string | null;
+    countryCode: string | null;
+    createdAt: string;
+  }>;
 };
 
 export type AdminUpdateUserInput = {
@@ -228,17 +390,28 @@ function authHeaders(): HeadersInit {
   };
 }
 
-export async function adminListUsers(role?: string, query?: string): Promise<AdminUserRow[]> {
+export async function adminListUsers(options?: {
+  role?: string;
+  query?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: "name" | "email" | "role" | "status" | "createdAt";
+  sortDir?: "asc" | "desc";
+}): Promise<AdminUsersResponse | null> {
   const params = new URLSearchParams();
-  if (role) params.set("role", role);
-  if (query) params.set("query", query);
+  if (options?.role) params.set("role", options.role);
+  if (options?.query) params.set("query", options.query);
+  if (options?.page) params.set("page", String(options.page));
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.sortBy) params.set("sortBy", options.sortBy);
+  if (options?.sortDir) params.set("sortDir", options.sortDir);
   const suffix = params.toString() ? `?${params}` : "";
   try {
     const res = await fetch(`${apiBase()}/admin/users${suffix}`, { headers: authHeaders() });
-    if (!res.ok) return [];
-    return (await res.json()) as AdminUserRow[];
+    if (!res.ok) return null;
+    return (await res.json()) as AdminUsersResponse;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -296,6 +469,18 @@ export async function adminDeleteUser(uuid: string) {
     return { ok: false as const, message: data.message ?? "Failed to delete user" };
   }
   return { ok: true as const };
+}
+
+export async function adminForceLogoutUser(uuid: string) {
+  const res = await fetch(`${apiBase()}/admin/users/${uuid}/force-logout`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to force logout user" };
+  }
+  return { ok: true as const, data: (await res.json()) as { success: true; revokedSessions: number } };
 }
 
 export async function adminReactivateUser(uuid: string) {
@@ -553,12 +738,7 @@ export async function adminSubscriptionStats() {
       headers: authHeaders(),
     });
     if (!res.ok) return null;
-    return (await res.json()) as {
-      total: number;
-      active: number;
-      expired: number;
-      canceled: number;
-    };
+    return (await res.json()) as AdminSubscriptionStats;
   } catch {
     return null;
   }
@@ -575,4 +755,148 @@ export async function adminFindSubscriptionByUuid(uuid: string) {
     slug: string;
     description: string;
   };
+}
+
+export async function adminListAuditEvents(options?: {
+  workspace?: "MANAGER" | "DEVELOPER";
+  query?: string;
+  tag?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams();
+  if (options?.workspace) params.set("workspace", options.workspace);
+  if (options?.query) params.set("query", options.query);
+  if (options?.tag) params.set("tag", options.tag);
+  if (options?.page) params.set("page", String(options.page));
+  if (options?.limit) params.set("limit", String(options.limit));
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await fetch(`${apiBase()}/admin/audit${suffix}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch audit events" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminAuditResponse };
+}
+
+export async function adminCreateAuditEvent(input: {
+  workspace?: "MANAGER" | "DEVELOPER";
+  category: "SECURITY" | "USER" | "SUBSCRIPTION" | "BILLING" | "SYSTEM";
+  level?: "INFO" | "WARN" | "CRITICAL";
+  action: string;
+  targetLabel?: string;
+  targetEmail?: string;
+  targetUuid?: string;
+  details?: string;
+  tags?: string[];
+  result?: "SUCCESS" | "BLOCKED";
+  linkUrl?: string;
+  linkLabel?: string;
+}) {
+  const res = await fetch(`${apiBase()}/admin/audit`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to create audit event" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminAuditRow };
+}
+
+export async function adminListBackups() {
+  const res = await fetch(`${apiBase()}/admin/backups`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch backups" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminBackupItem[] };
+}
+
+export async function adminCreateBackup(input?: {
+  label?: string;
+  kind?: "CURRENT" | "SEED" | "MANUAL";
+}) {
+  const res = await fetch(`${apiBase()}/admin/backups`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input ?? {}),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to create backup" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminBackupItem };
+}
+
+export async function adminRestoreBackup(backupId: string) {
+  const res = await fetch(`${apiBase()}/admin/backups/${backupId}/restore`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ confirm: true }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+    return { ok: false as const, message: message ?? "Failed to restore backup" };
+  }
+  return {
+    ok: true as const,
+    data: (await res.json()) as { success: true; restored: AdminBackupItem },
+  };
+}
+
+export async function adminRestoreStatus() {
+  const res = await fetch(`${apiBase()}/admin/backups/restore-status`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+    return { ok: false as const, message: message ?? "Failed to fetch restore status" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminRestoreStatus };
+}
+
+export async function adminDeleteBackup(backupId: string) {
+  const res = await fetch(`${apiBase()}/admin/backups/${backupId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to delete backup" };
+  }
+  return { ok: true as const, data: (await res.json()) as { success: true } };
+}
+
+export async function adminDownloadBackup(backupId: string) {
+  const res = await fetch(`${apiBase()}/admin/backups/${backupId}/file`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to download backup" };
+  }
+
+  const blob = await res.blob();
+  const contentDisposition = res.headers.get("content-disposition") ?? "";
+  const matchedName = /filename="?([^"]+)"?/i.exec(contentDisposition)?.[1];
+  const filename = matchedName ?? `${backupId}.json`;
+
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
+
+  return { ok: true as const };
 }

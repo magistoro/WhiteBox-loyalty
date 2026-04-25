@@ -45,6 +45,30 @@ enum SubscriptionSpendPolicy {
   INCLUDE_WITH_BONUS
 }
 
+enum AuditWorkspace {
+  MANAGER
+  DEVELOPER
+}
+
+enum AuditLevel {
+  INFO
+  WARN
+  CRITICAL
+}
+
+enum AuditCategory {
+  SECURITY
+  USER
+  SUBSCRIPTION
+  BILLING
+  SYSTEM
+}
+
+enum AuditResult {
+  SUCCESS
+  BLOCKED
+}
+
 model User {
   id              Int                @id @default(autoincrement())
   uuid            String             @unique @default(uuid())
@@ -70,6 +94,8 @@ model User {
   managedCompany Company? @relation("CompanyOwner")
   loginEvents LoginEvent[]
   loyaltyTransactions LoyaltyTransaction[]
+  actorAuditEvents AuditEvent[] @relation("AuditActor")
+  targetAuditEvents AuditEvent[] @relation("AuditTarget")
 }
 
 model Category {
@@ -304,4 +330,36 @@ model EmailChangeRequest {
   @@index([userId])
   @@index([requestedByUserId])
   @@index([expiresAt])
+}
+
+model AuditEvent {
+  id          String         @id @default(cuid())
+  workspace   AuditWorkspace @default(MANAGER)
+  level       AuditLevel     @default(INFO)
+  category    AuditCategory
+  action      String
+  details     String?
+  actorUserId Int?
+  actorLabel  String
+  targetUserId Int?
+  targetLabel String?
+  targetEmail String?
+  targetUuid  String?
+  result      AuditResult    @default(SUCCESS)
+  tags        String[]       @default([])
+  ipAddress   String?
+  countryCode String?
+  linkUrl     String?
+  linkLabel   String?
+  createdAt   DateTime       @default(now())
+
+  actorUser   User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  targetUser  User? @relation("AuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspace, createdAt])
+  @@index([category, createdAt])
+  @@index([level, createdAt])
+  @@index([targetUserId, createdAt])
+  @@index([targetEmail])
+  @@index([targetUuid])
 }

@@ -9,6 +9,7 @@ whitebox/
       src/
         auth/
         admin/
+        maintenance/
         registered/
         health/
         oauth/
@@ -35,6 +36,7 @@ whitebox/
 
 - TWA (mobile): `/`, `/companies`, `/marketplace`, `/wallet/[id]`, `/map`, `/history`, `/scan`, `/settings`
 - Admin (desktop): `/admin`, `/admin/users`, `/admin/users/[uuid]`, `/admin/categories`, `/admin/companies`, `/admin/companies/[uuid]`, `/admin/subscriptions`, `/admin/database`
+- Admin operations: `/admin/audit`, `/admin/audit/new`, `/admin/audit/backups`
 - Company (desktop): `/company`, `/company/payments`, `/company/compliance`
 
 ## Key files
@@ -45,9 +47,13 @@ whitebox/
 - `src/app/(portal)/admin/categories/page.tsx` - category CRUD workspace.
 - `src/app/(portal)/admin/companies/[uuid]/page.tsx` - company profile + company-bound subscriptions CRUD.
 - `src/app/(portal)/admin/database/page.tsx` - interactive DB map (zoom/pan/relations).
+- `src/app/(portal)/admin/audit/page.tsx` - audit feed UI with workspace filters.
+- `src/app/(portal)/admin/audit/backups/page.tsx` - DB backups manager + restore statuses.
 - `src/lib/api/admin-client.ts` - admin HTTP client methods.
 - `apps/api/src/admin/admin.controller.ts` - admin endpoints.
 - `apps/api/src/admin/admin.service.ts` - admin business logic.
+- `apps/api/src/maintenance/maintenance.guard.ts` - global API lock during restore.
+- `apps/api/src/maintenance/maintenance-state.service.ts` - restore stage state machine.
 - `apps/api/src/admin/admin.service.spec.ts` - admin unit tests.
 
 ## Layout conventions

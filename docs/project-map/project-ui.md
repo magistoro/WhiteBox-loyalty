@@ -28,7 +28,9 @@
 | `/admin/database` | Interactive DB schema map | ADMIN |
 | `/admin/payments` | Payments placeholder | ADMIN |
 | `/admin/compliance` | Compliance placeholder | ADMIN |
-| `/admin/audit` | Audit placeholder | ADMIN |
+| `/admin/audit` | Audit feed (manager/developer) | ADMIN |
+| `/admin/audit/new` | Manual audit event form | ADMIN |
+| `/admin/audit/backups` | Backup manager with restore flow | ADMIN |
 
 ## Layout hierarchy
 
@@ -44,6 +46,10 @@
 - Users table is read-only for role/status in-place; editing is moved to `/admin/users/[uuid]`.
 - Sensitive fields are protected in profile view: password/email are not directly editable, and account deletion schedule is read-only with explicit reactivation action.
 - Company profile uses `Min redeem` as the points threshold for allowing redemption; levels are configured separately for cashback progression.
+- Audit page includes workspace-aware stream for operations and developer git events.
+- Backup page includes save/download/restore/delete actions and live restore timeline.
+- During restore, operation buttons are locked and UI shows maintenance + progress stages.
+- Database map supports wheel zoom, node visibility toggle, and schema view presets for focused exploration.
 
 ## Key components
 

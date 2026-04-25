@@ -10,7 +10,7 @@
 
 - `src/lib/api/auth-client.ts` - auth session and account actions.
 - `src/lib/api/categories-client.ts` - registered category/favorites endpoints.
-- `src/lib/api/admin-client.ts` - admin directory, secure user management, categories CRUD, company/subscription CRUD.
+- `src/lib/api/admin-client.ts` - admin directory, secure user management, categories/company/subscription CRUD, audit and backup operations.
 
 ## Admin API surface (`/api/admin/*`)
 
@@ -43,6 +43,14 @@ All routes require valid JWT and `ADMIN` role.
 | `/api/admin/company-users/:uuid/subscriptions/:subscriptionUuid` | DELETE | Delete company subscription |
 | `/api/admin/subscriptions/stats` | GET | Subscription counters |
 | `/api/admin/subscriptions/:uuid` | GET | Subscription lookup |
+| `/api/admin/audit` | GET | Audit feed by workspace (`MANAGER` / `DEVELOPER`) |
+| `/api/admin/audit` | POST | Create manual audit event |
+| `/api/admin/backups` | GET | List database snapshots |
+| `/api/admin/backups` | POST | Create snapshot (`CURRENT` / `SEED` / `MANUAL`) |
+| `/api/admin/backups/:backupId/file` | GET | Download snapshot payload |
+| `/api/admin/backups/:backupId/restore` | POST | Restore snapshot (destructive, confirmed) |
+| `/api/admin/backups/:backupId` | DELETE | Delete snapshot |
+| `/api/admin/backups/restore-status` | GET | Live restore stage/progress status |
 
 ## Registered API surface (`/api/registered/*`)
 
@@ -56,8 +64,10 @@ All routes require valid JWT and `ADMIN` role.
 ## Backend service responsibilities
 
 - `AuthService`: registration/login/refresh/password changes/account freeze/reactivate, login security metadata, email-change token confirmation.
-- `AdminService`: account creation, safe user CRUD, categories/company/subscription CRUD, analytics and lookups.
+- `AdminService`: account creation, safe user CRUD, categories/company/subscription CRUD, analytics, audit stream, and DB snapshot management.
 - `RegisteredService`: category and favorites management for CLIENT role.
+- `MaintenanceStateService`: in-memory restore process state machine for live admin status.
+- `MaintenanceGuard`: global API lock while restore is active.
 
 ## Data-rich admin profile payload
 
@@ -100,3 +110,12 @@ Sorting options: `name`, `email`, `balance`, `earned`, `spent`, `level`, `update
 2. Backend stores `LoginEvent` (ip/country/city/userAgent/device/requestId).
 3. Admin profile response aggregates latest events and computes `loginRisk`.
 4. `/admin/users/[uuid]` shows anomalies to support manual account recovery decisions.
+
+## Restore guard behavior
+
+- While restore is active, API rejects regular operations with `503` and code `MAINTENANCE_RESTORE`.
+- Allowed during maintenance:
+- `GET /api/health`
+- `POST /api/admin/backups/:backupId/restore`
+- `GET /api/admin/backups/restore-status`
+- Restore emits internal stages: `REQUESTED`, `READING_SNAPSHOT`, `VALIDATING_PAYLOAD`, `WAITING_DB_LOCK`, `CLEARING_TABLES`, `RESTORING_TABLES`, `RESETTING_SEQUENCES`, `FINALIZING`, `DONE`, `FAILED`.
