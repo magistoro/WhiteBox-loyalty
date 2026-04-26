@@ -56,7 +56,7 @@ export default function FavoriteCategoriesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 pb-4 pt-6">
+    <div className="mx-auto max-w-lg px-4 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-6">
       <h1 className="mb-2 text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="text-muted-foreground mb-4 text-sm">
         Pick categories to personalize sliders, recommendations and category priority.
@@ -92,12 +92,17 @@ export default function FavoriteCategoriesPage() {
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
 
       <div className="mt-3 flex gap-2">
-        <Button type="button" className="flex-1" disabled={!canSave} onClick={onSave}>
+        <Button type="button" className="min-h-11 flex-1" disabled={!canSave} onClick={onSave}>
           <Heart className="mr-2 h-4 w-4" />
           {saving ? "Saving..." : "Save favorites"}
         </Button>
         {!onboardingMode && (
-          <Button type="button" variant="secondary" className="glass border-white/10" onClick={() => router.replace("/settings")}>
+          <Button
+            type="button"
+            variant="secondary"
+            className="glass min-h-11 border-white/10"
+            onClick={() => router.replace("/settings")}
+          >
             Cancel
           </Button>
         )}
