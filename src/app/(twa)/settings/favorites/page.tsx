@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Heart } from "lucide-react";
+import { Heart, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
@@ -13,10 +13,13 @@ import {
   saveFavoriteCategorySlugs,
 } from "@/lib/api/categories-client";
 
-export default function FavoriteCategoriesPage() {
+const MAX_FAVORITE_CATEGORIES = 10;
+
+function FavoriteCategoriesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const onboardingMode = searchParams.get("onboarding") === "1";
+  const nextPath = searchParams.get("next") || "/";
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -35,9 +38,15 @@ export default function FavoriteCategoriesPage() {
 
   const selectedCount = selected.length;
   const title = onboardingMode ? "Select favorite categories" : "Favorite categories";
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   function toggle(slug: string) {
-    setSelected((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
+    setError(null);
+    setSelected((prev) => {
+      if (prev.includes(slug)) return prev.filter((s) => s !== slug);
+      if (prev.length >= MAX_FAVORITE_CATEGORIES) return prev;
+      return [...prev, slug];
+    });
   }
 
   const canSave = useMemo(() => selectedCount > 0 && !saving, [selectedCount, saving]);
@@ -49,10 +58,10 @@ export default function FavoriteCategoriesPage() {
     const res = await saveFavoriteCategorySlugs(selected);
     setSaving(false);
     if (!res.ok) {
-      setError(res.message);
+      setError("Choose up to 10 categories.");
       return;
     }
-    router.replace("/");
+    router.replace(nextPath);
   }
 
   return (
@@ -64,20 +73,37 @@ export default function FavoriteCategoriesPage() {
 
       <Card className="glass border-white/10">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Available categories</CardTitle>
-          <CardDescription>{selectedCount} selected</CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Choose categories
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Pick what you want to see first.
+              </CardDescription>
+            </div>
+            <div className="min-w-[84px] shrink-0 whitespace-nowrap rounded-full border border-white/10 bg-white px-3 py-1 text-center text-xs font-semibold text-black">
+              selected {selectedCount}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {categories.map((category) => {
-            const active = selected.includes(category.slug);
+            const active = selectedSet.has(category.slug);
+            const locked = !active && selectedCount >= MAX_FAVORITE_CATEGORIES;
             return (
               <button
                 key={category.slug}
                 type="button"
+                aria-pressed={active}
+                disabled={locked}
                 onClick={() => toggle(category.slug)}
-                className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                className={`relative rounded-xl border px-3 py-3 text-left transition-colors ${
                   active
-                    ? "border-primary bg-primary/15"
+                    ? "border-white bg-white/[0.16] shadow-[0_0_0_1px_rgba(255,255,255,0.22)]"
+                    : locked
+                      ? "cursor-not-allowed border-white/5 bg-muted/5 opacity-35"
                     : "border-white/10 bg-muted/10 hover:bg-muted/20"
                 }`}
               >
@@ -89,7 +115,7 @@ export default function FavoriteCategoriesPage() {
         </CardContent>
       </Card>
 
-      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+      {error && <p className="mt-2 text-sm text-muted-foreground">{error}</p>}
 
       <div className="mt-3 flex gap-2">
         <Button type="button" className="flex-1" disabled={!canSave} onClick={onSave}>
@@ -103,5 +129,13 @@ export default function FavoriteCategoriesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function FavoriteCategoriesPage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-6 text-sm text-muted-foreground">Loading favorite categories...</div>}>
+      <FavoriteCategoriesContent />
+    </Suspense>
   );
 }

@@ -1,50 +1,108 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import {
-  subscriptions,
-  categories,
-  getSubscriptionsForMarketplace,
-  getCategoryById,
-} from "@/lib/mockData";
-import type { CategoryId } from "@/lib/mockData";
-import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, CircleDollarSign, Loader2, SlidersHorizontal, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
-import { ArrowLeft, Coffee } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
+import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
+import { cn } from "@/lib/utils";
+import { getTwaMarketplace, type TwaMarketplace, type TwaSubscriptionPlan } from "@/lib/api/twa-client";
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.05 },
-  },
-};
+const POPULAR_CATEGORY_SLUGS = ["coffee", "books", "auto", "barber", "beauty", "food", "fitness", "retail"];
 
-const item = {
-  hidden: { opacity: 0, y: 8 },
-  show: { opacity: 1, y: 0 },
-};
+function formatPlanPrice(plan: TwaSubscriptionPlan) {
+  const unit = plan.renewalUnit || "month";
+  return `$${plan.price}/${unit}`;
+}
+
+function planPrice(plan: TwaSubscriptionPlan) {
+  const value = Number(plan.price);
+  return Number.isFinite(value) ? value : 0;
+}
 
 export default function MarketplacePage() {
-  const [selectedCategory, setSelectedCategory] = useState<CategoryId | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [marketplace, setMarketplace] = useState<TwaMarketplace>({
+    categories: [],
+    subscriptions: [],
+  });
+  const [loading, setLoading] = useState(true);
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
 
-  const filteredSubscriptions = useMemo(
-    () => getSubscriptionsForMarketplace(selectedCategory),
-    [selectedCategory]
+  useEffect(() => {
+    let ignore = false;
+    void getTwaMarketplace().then((data) => {
+      if (ignore) return;
+      setMarketplace(data);
+      setLoading(false);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const visibleSubscriptions = useMemo(
+    () => {
+      const min = minPrice.trim() === "" ? null : Number(minPrice);
+      const max = maxPrice.trim() === "" ? null : Number(maxPrice);
+
+      return marketplace.subscriptions.filter((plan) => {
+        const price = planPrice(plan);
+        if (selectedCategory && plan.category?.slug !== selectedCategory) return false;
+        if (min !== null && Number.isFinite(min) && price < min) return false;
+        if (max !== null && Number.isFinite(max) && price > max) return false;
+        return true;
+      });
+    },
+    [marketplace.subscriptions, selectedCategory, minPrice, maxPrice],
   );
+
+  const sortedCategories = useMemo(
+    () =>
+      [...marketplace.categories].sort((a, b) => {
+        if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      }),
+    [marketplace.categories],
+  );
+
+  const quickCategories = useMemo(() => {
+    const favorites = sortedCategories.filter((category) => category.isFavorite);
+    const popular = POPULAR_CATEGORY_SLUGS
+      .map((slug) => sortedCategories.find((category) => category.slug === slug))
+      .filter((category): category is (typeof sortedCategories)[number] => Boolean(category));
+    const unique = new Map([...favorites, ...popular].map((category) => [category.slug, category]));
+    return [...unique.values()].slice(0, 10);
+  }, [sortedCategories]);
+
+  const hasAdvancedFilters = Boolean(selectedCategory || minPrice.trim() || maxPrice.trim());
+
+  function clearFilters() {
+    setSelectedCategory(null);
+    setMinPrice("");
+    setMaxPrice("");
+  }
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.25 }}
-      className="min-h-full px-4 pt-6 pb-4"
+      className="min-h-full px-4 pb-4 pt-6"
     >
       <Link
         href="/"
@@ -56,13 +114,105 @@ export default function MarketplacePage() {
 
       <div className="mb-4">
         <h1 className="text-xl font-semibold">Subscriptions</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
+        <p className="mt-0.5 text-sm text-muted-foreground">
           Activate plans and use benefits at partner locations
         </p>
       </div>
 
-      {/* Category filter — native horizontal scroll (not Radix ScrollArea; see CategoryChipStrip) */}
-      <CategoryChipStrip className="mb-6">
+      <CategoryChipStrip className="mb-4">
+        <Sheet>
+          <SheetTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                hasAdvancedFilters
+                  ? "bg-primary text-primary-foreground"
+                  : "glass border border-white/10 text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Filters
+            </button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[86%] max-w-sm overflow-y-auto p-0" showCloseButton>
+            <SheetHeader className="border-b border-white/10">
+              <SheetTitle>Subscription filters</SheetTitle>
+              <SheetDescription>Refine marketplace plans by category and monthly price.</SheetDescription>
+            </SheetHeader>
+
+            <div className="space-y-6 px-6 py-5">
+              <section>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-muted-foreground">Categories</h2>
+                  {selectedCategory && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory(null)}
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {sortedCategories.map((category) => (
+                    <button
+                      key={category.slug}
+                      type="button"
+                      onClick={() => setSelectedCategory((current) => (current === category.slug ? null : category.slug))}
+                      className={cn(
+                        "inline-flex items-center gap-2 rounded-2xl border px-3 py-3 text-left text-sm font-medium transition-colors",
+                        selectedCategory === category.slug
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <CategoryIcon iconName={category.icon ?? "Circle"} className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{category.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Price per month</h2>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Min</span>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      placeholder="0"
+                      value={minPrice}
+                      onChange={(event) => setMinPrice(event.target.value)}
+                      className="glass border-white/10"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Max</span>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      placeholder="50"
+                      value={maxPrice}
+                      onChange={(event) => setMaxPrice(event.target.value)}
+                      className="glass border-white/10"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <Button variant="outline" className="w-full border-white/10" onClick={clearFilters}>
+                Reset filters
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+
         <button
           type="button"
           onClick={() => setSelectedCategory(null)}
@@ -70,52 +220,57 @@ export default function MarketplacePage() {
             "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
             selectedCategory === null
               ? "bg-primary text-primary-foreground"
-              : "glass border border-white/10 text-muted-foreground hover:text-foreground"
+              : "glass border border-white/10 text-muted-foreground hover:text-foreground",
           )}
         >
           All
         </button>
-        {categories.map((cat) => (
+        {quickCategories.map((category) => (
           <button
-            key={cat.id}
+            key={category.slug}
             type="button"
-            onClick={() => setSelectedCategory(cat.id)}
+            onClick={() => setSelectedCategory((current) => (current === category.slug ? null : category.slug))}
             className={cn(
-              "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
-              selectedCategory === cat.id
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              selectedCategory === category.slug
                 ? "bg-primary text-primary-foreground"
-                : "glass border border-white/10 text-muted-foreground hover:text-foreground"
+                : "glass border border-white/10 text-muted-foreground hover:text-foreground",
             )}
           >
-            {cat.name}
+            <CategoryIcon iconName={category.icon ?? "Circle"} className="h-3.5 w-3.5" />
+            {category.name}
           </button>
         ))}
       </CategoryChipStrip>
 
-      <motion.ul
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="space-y-3"
-      >
-        {filteredSubscriptions.map((sub) => {
-          const category = sub.categoryId ? getCategoryById(sub.categoryId) : null;
+      <ul className="space-y-2">
+        {visibleSubscriptions.map((plan, index) => {
+          const category = plan.category;
           return (
-            <motion.li key={sub.id} variants={item}>
-              <Link href={`/marketplace/${sub.id}`}>
+            <motion.li
+              key={plan.uuid}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(index * 0.04, 0.24) }}
+            >
+              <Link href={`/marketplace/${plan.uuid}`}>
                 <Card className="glass border-white/10 transition-all active:scale-[0.98] hover:border-white/20">
-                  <CardContent className="p-4 flex items-start gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
-                      <Coffee className="h-6 w-6 text-primary" />
+                  <CardContent className="flex items-start gap-3 px-3 py-2.5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+                      {category ? (
+                        <CategoryIcon iconName={category.icon ?? "Circle"} className="h-5 w-5 text-primary" />
+                      ) : (
+                        <CircleDollarSign className="h-5 w-5 text-primary" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold truncate">{sub.name}</p>
-                      <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
-                        {sub.description}
+                      <p className="truncate font-semibold">{plan.name}</p>
+                      <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
+                        {plan.description}
                       </p>
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium text-primary">
-                          {sub.priceLabel}
+                          {formatPlanPrice(plan)}
                         </span>
                         {category && (
                           <Badge variant="secondary" className="inline-flex items-center gap-1 text-[10px] font-normal">
@@ -123,6 +278,12 @@ export default function MarketplacePage() {
                             {category.name}
                           </Badge>
                         )}
+                        {plan.company && (
+                          <Badge variant="outline" className="text-[10px] font-normal">
+                            {plan.company.name}
+                          </Badge>
+                        )}
+                        {plan.isOwned && <Badge className="text-[10px] font-normal">Active</Badge>}
                       </div>
                     </div>
                     <Button size="sm" variant="secondary" className="shrink-0">
@@ -134,10 +295,16 @@ export default function MarketplacePage() {
             </motion.li>
           );
         })}
-      </motion.ul>
+      </ul>
 
-      {filteredSubscriptions.length === 0 && (
-        <p className="text-center text-sm text-muted-foreground py-12">
+      {loading && (
+        <div className="flex justify-center py-12 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      )}
+
+      {!loading && visibleSubscriptions.length === 0 && (
+        <p className="py-12 text-center text-sm text-muted-foreground">
           No subscriptions in this category.
         </p>
       )}

@@ -69,6 +69,17 @@ enum AuditResult {
   BLOCKED
 }
 
+enum PromoCodeRewardType {
+  POINTS
+  SUBSCRIPTION
+}
+
+enum ReferralInviteStatus {
+  CREATED
+  REDEEMED
+  REWARDED
+}
+
 model User {
   id              Int                @id @default(autoincrement())
   uuid            String             @unique @default(uuid())
@@ -96,6 +107,10 @@ model User {
   loyaltyTransactions LoyaltyTransaction[]
   actorAuditEvents AuditEvent[] @relation("AuditActor")
   targetAuditEvents AuditEvent[] @relation("AuditTarget")
+  profilePreference UserProfilePreference?
+  promoRedemptions PromoCodeRedemption[]
+  referralInvites ReferralInvite[] @relation("ReferralInviter")
+  redeemedReferralInvites ReferralInvite[] @relation("ReferralInvited")
 }
 
 model Category {
@@ -141,9 +156,12 @@ model Company {
 
   category          Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   categories        CompanyCategory[]
+  locations         CompanyLocation[]
   levelRules        CompanyLevelRule[]
   owner             User?           @relation("CompanyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   subscriptions     Subscription[]
+  promoPointCodes   PromoCode[]     @relation("PromoPointCompany")
+  referralCampaigns ReferralCampaign[] @relation("ReferralBonusCompany")
   userLinks         UserCompany[]
   loyaltyTransactions LoyaltyTransaction[]
 
@@ -171,9 +189,34 @@ model Subscription {
   company        Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
   category       Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   userPlans      UserSubscription[]
+  promoCodes     PromoCode[]
 
   @@index([companyId])
   @@index([categoryId])
+}
+
+model CompanyLocation {
+  id               Int      @id @default(autoincrement())
+  uuid             String   @unique @default(uuid())
+  companyId        Int
+  title            String?
+  address          String
+  city             String?
+  latitude         Decimal  @db.Decimal(10, 7)
+  longitude        Decimal  @db.Decimal(10, 7)
+  precision        String?
+  geocoderResponse Json?
+  openTime         String   @default("09:00")
+  closeTime        String   @default("21:00")
+  workingDays      Int[]    @default([0, 1, 2, 3, 4, 5, 6])
+  isMain           Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, isActive])
 }
 
 model CompanyCategory {
@@ -239,6 +282,83 @@ model UserSubscription {
 
   @@index([userId, status])
   @@index([subscriptionId])
+}
+
+model UserProfilePreference {
+  id                    Int      @id @default(autoincrement())
+  userId                Int      @unique
+  onboardingCompletedAt DateTime?
+  onboardingSkippedAt   DateTime?
+  geolocationPromptedAt DateTime?
+  profileVisibility     String   @default("PRIVATE")
+  marketingOptIn        Boolean  @default(false)
+  showActivityStats     Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PromoCode {
+  id             Int                 @id @default(autoincrement())
+  code           String              @unique
+  title          String
+  description    String?
+  rewardType     PromoCodeRewardType
+  points         Int                 @default(0)
+  companyId      Int?
+  subscriptionId Int?
+  maxRedemptions Int?
+  expiresAt      DateTime?
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  company        Company?            @relation("PromoPointCompany", fields: [companyId], references: [id], onDelete: SetNull)
+  subscription   Subscription?       @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  redemptions    PromoCodeRedemption[]
+}
+
+model PromoCodeRedemption {
+  id          Int       @id @default(autoincrement())
+  promoCodeId Int
+  userId      Int
+  redeemedAt  DateTime  @default(now())
+
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([promoCodeId, userId])
+  @@index([userId])
+}
+
+model ReferralCampaign {
+  id                 Int      @id @default(autoincrement())
+  title              String   @default("Invite a friend")
+  inviterBonusPoints Int      @default(250)
+  invitedBonusPoints Int      @default(250)
+  bonusCompanyId     Int?
+  isActive           Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  bonusCompany       Company? @relation("ReferralBonusCompany", fields: [bonusCompanyId], references: [id], onDelete: SetNull)
+}
+
+model ReferralInvite {
+  id            Int                  @id @default(autoincrement())
+  code          String               @unique
+  inviterUserId Int
+  invitedUserId Int?                 @unique
+  status        ReferralInviteStatus @default(CREATED)
+  rewardedAt    DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  inviter       User                 @relation("ReferralInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
+  invited       User?                @relation("ReferralInvited", fields: [invitedUserId], references: [id], onDelete: SetNull)
+
+  @@index([inviterUserId])
 }
 
 /// Rotating refresh tokens for JWT sessions (Passport/JWT strategy).

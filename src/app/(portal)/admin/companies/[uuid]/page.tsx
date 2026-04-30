@@ -7,12 +7,14 @@ import {
   ArrowLeft,
   Building2,
   CalendarClock,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   CircleDollarSign,
   Gift,
   Hash,
   FileText,
+  MapPin,
   Plus,
   RotateCcw,
   Save,
@@ -34,16 +36,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SelectField } from "@/components/ui/select-field";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import {
   adminCreateCompanySubscription,
+  adminCreateCompanyLocation,
   adminDeleteCompanySubscription,
+  adminDeleteCompanyLocation,
   adminDeleteCompanyUser,
   adminGetCompanyUser,
   adminListCategories,
+  adminUpdateCompanyLocation,
   adminUpdateCompanySubscription,
   adminUpdateCompanyUser,
   adminUpsertCompanyProfile,
   type AdminCategory,
+  type AdminCompanyLocation,
   type AdminCompanySubscription,
 } from "@/lib/api/admin-client";
 
@@ -80,6 +87,16 @@ type SubscriptionDraft = {
   categoryId: number | "";
 };
 
+type LocationDraft = {
+  title: string;
+  address: string;
+  city: string;
+  openTime: string;
+  closeTime: string;
+  workingDays: number[];
+  isMain: boolean;
+};
+
 type SaveOptions = {
   skipReload?: boolean;
   silent?: boolean;
@@ -105,6 +122,62 @@ const SUBSCRIPTION_POLICY_OPTIONS = [
     badge: "Most generous",
   },
 ];
+
+const SECTION_META = [
+  {
+    key: "account",
+    title: "Account",
+    description: "Identity and lifecycle",
+    icon: ShieldAlert,
+  },
+  {
+    key: "profile",
+    title: "Profile",
+    description: "Brand and rewards",
+    icon: Building2,
+  },
+  {
+    key: "locations",
+    title: "Locations",
+    description: "Addresses and map points",
+    icon: MapPin,
+  },
+  {
+    key: "subscriptions",
+    title: "Subscriptions",
+    description: "Plans and offers",
+    icon: CircleDollarSign,
+  },
+] as const;
+
+type SectionKey = (typeof SECTION_META)[number]["key"];
+
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 0, label: "Sun" },
+];
+const DEFAULT_WORKING_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+function toggleWeekday(days: number[], day: number) {
+  const next = days.includes(day) ? days.filter((item) => item !== day) : [...days, day];
+  return next.length > 0 ? next.sort((a, b) => a - b) : days;
+}
+
+function normalizeLocation(location: AdminCompanyLocation): AdminCompanyLocation {
+  return {
+    ...location,
+    openTime: location.openTime ?? "09:00",
+    closeTime: location.closeTime ?? "21:00",
+    workingDays: Array.isArray(location.workingDays) && location.workingDays.length > 0
+      ? location.workingDays
+      : DEFAULT_WORKING_DAYS,
+  };
+}
 
 function toDateTimeLocal(iso?: string | null): string {
   if (!iso) return "";
@@ -152,9 +225,10 @@ export default function AdminCompanyProfilePage() {
   const [subscriptions, setSubscriptions] = useState<AdminCompanySubscription[]>([]);
   const [subscriptionQuery, setSubscriptionQuery] = useState("");
   const [sections, setSections] = useState({
-    account: true,
-    profile: true,
-    subscriptions: true,
+    account: false,
+    profile: false,
+    locations: false,
+    subscriptions: false,
   });
   const [initialAccountHash, setInitialAccountHash] = useState("");
   const [initialCompanyHash, setInitialCompanyHash] = useState("");
@@ -164,6 +238,17 @@ export default function AdminCompanyProfilePage() {
   const [initialSubscriptionsState, setInitialSubscriptionsState] = useState<
     AdminCompanySubscription[]
   >([]);
+  const [locations, setLocations] = useState<AdminCompanyLocation[]>([]);
+  const [locationSaving, setLocationSaving] = useState(false);
+  const [locationDraft, setLocationDraft] = useState<LocationDraft>({
+    title: "",
+    address: "",
+    city: "Moscow",
+    openTime: "09:00",
+    closeTime: "21:00",
+    workingDays: DEFAULT_WORKING_DAYS,
+    isMain: false,
+  });
   const [draft, setDraft] = useState<SubscriptionDraft>({
     name: "",
     description: "",
@@ -229,86 +314,9 @@ export default function AdminCompanyProfilePage() {
 
   async function load() {
     setLoading(true);
-    const [userRes, cats] = await Promise.all([adminGetCompanyUser(companyUserUuid), adminListCategories()]);
-    setCategories(cats);
-    if (!userRes.ok) {
-      setError(`Cannot load company user (${userRes.status}): ${userRes.message}`);
-      setLoading(false);
-      return;
-    }
-
-    const user = userRes.data;
-    setAccountForm({
-      name: user.name,
-      accountStatus: user.accountStatus,
-      emailVerifiedAt: toDateTimeLocal(user.emailVerifiedAt),
-      createdAt: toDateTimeLocal(user.createdAt),
-    });
-    setCompanyForm({
-      name: user.managedCompany?.name ?? "",
-      slug: user.managedCompany?.slug ?? "",
-      description: user.managedCompany?.description ?? "",
-      categoryIds:
-        user.managedCompany?.categories?.map((row) => row.categoryId) ??
-        (user.managedCompany?.categoryId ? [user.managedCompany.categoryId] : []),
-      pointsPerReward: user.managedCompany?.pointsPerReward ?? 100,
-      subscriptionSpendPolicy: user.managedCompany?.subscriptionSpendPolicy ?? "EXCLUDE",
-      levelRules: normalizeLevelRules(user.managedCompany?.levelRules),
-      isActive: user.managedCompany?.isActive ?? true,
-    });
-    setSubscriptions(user.managedCompany?.subscriptions ?? []);
-    const nextAccount: CompanyForm = {
-      name: user.name,
-      accountStatus: user.accountStatus,
-      emailVerifiedAt: toDateTimeLocal(user.emailVerifiedAt),
-      createdAt: toDateTimeLocal(user.createdAt),
-    };
-    const nextCompany: CompanyProfileForm = {
-      name: user.managedCompany?.name ?? "",
-      slug: user.managedCompany?.slug ?? "",
-      description: user.managedCompany?.description ?? "",
-      categoryIds:
-        user.managedCompany?.categories?.map((row) => row.categoryId) ??
-        (user.managedCompany?.categoryId ? [user.managedCompany.categoryId] : []),
-      pointsPerReward: user.managedCompany?.pointsPerReward ?? 100,
-      subscriptionSpendPolicy: user.managedCompany?.subscriptionSpendPolicy ?? "EXCLUDE",
-      levelRules: normalizeLevelRules(user.managedCompany?.levelRules),
-      isActive: user.managedCompany?.isActive ?? true,
-    };
-    const nextSubscriptions = user.managedCompany?.subscriptions ?? [];
-    setInitialAccountState(nextAccount);
-    setInitialCompanyState(nextCompany);
-    setInitialSubscriptionsState(nextSubscriptions);
-    setInitialAccountHash(JSON.stringify(nextAccount));
-    setInitialCompanyHash(JSON.stringify(nextCompany));
-    setInitialSubscriptionsHash(
-      JSON.stringify(
-        [...nextSubscriptions]
-          .sort((a, b) => a.uuid.localeCompare(b.uuid))
-          .map((sub) => ({
-            uuid: sub.uuid,
-            name: sub.name,
-            description: sub.description,
-            price: String(sub.price),
-            renewalPeriod: sub.renewalPeriod,
-            renewalValue: sub.renewalValue,
-            renewalUnit: sub.renewalUnit,
-            promoBonusDays: sub.promoBonusDays,
-            promoEndsAt: sub.promoEndsAt,
-            slug: sub.slug,
-            categoryId: sub.categoryId,
-            isActive: sub.isActive,
-          })),
-      ),
-    );
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    let ignore = false;
-    void (async () => {
+    setError(null);
+    try {
       const [userRes, cats] = await Promise.all([adminGetCompanyUser(companyUserUuid), adminListCategories()]);
-      if (ignore) return;
       setCategories(cats);
       if (!userRes.ok) {
         setError(`Cannot load company user (${userRes.status}): ${userRes.message}`);
@@ -336,6 +344,7 @@ export default function AdminCompanyProfilePage() {
         isActive: user.managedCompany?.isActive ?? true,
       });
       setSubscriptions(user.managedCompany?.subscriptions ?? []);
+      setLocations((user.managedCompany?.locations ?? []).map(normalizeLocation));
       const nextAccount: CompanyForm = {
         name: user.name,
         accountStatus: user.accountStatus,
@@ -380,7 +389,98 @@ export default function AdminCompanyProfilePage() {
             })),
         ),
       );
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Cannot load company profile.");
+    } finally {
       setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let ignore = false;
+    void (async () => {
+      try {
+        const [userRes, cats] = await Promise.all([adminGetCompanyUser(companyUserUuid), adminListCategories()]);
+        if (ignore) return;
+        setCategories(cats);
+        if (!userRes.ok) {
+          setError(`Cannot load company user (${userRes.status}): ${userRes.message}`);
+          setLoading(false);
+          return;
+        }
+
+        const user = userRes.data;
+        setAccountForm({
+          name: user.name,
+          accountStatus: user.accountStatus,
+          emailVerifiedAt: toDateTimeLocal(user.emailVerifiedAt),
+          createdAt: toDateTimeLocal(user.createdAt),
+        });
+        setCompanyForm({
+          name: user.managedCompany?.name ?? "",
+          slug: user.managedCompany?.slug ?? "",
+          description: user.managedCompany?.description ?? "",
+          categoryIds:
+            user.managedCompany?.categories?.map((row) => row.categoryId) ??
+            (user.managedCompany?.categoryId ? [user.managedCompany.categoryId] : []),
+          pointsPerReward: user.managedCompany?.pointsPerReward ?? 100,
+          subscriptionSpendPolicy: user.managedCompany?.subscriptionSpendPolicy ?? "EXCLUDE",
+          levelRules: normalizeLevelRules(user.managedCompany?.levelRules),
+          isActive: user.managedCompany?.isActive ?? true,
+        });
+        setSubscriptions(user.managedCompany?.subscriptions ?? []);
+        setLocations((user.managedCompany?.locations ?? []).map(normalizeLocation));
+        const nextAccount: CompanyForm = {
+          name: user.name,
+          accountStatus: user.accountStatus,
+          emailVerifiedAt: toDateTimeLocal(user.emailVerifiedAt),
+          createdAt: toDateTimeLocal(user.createdAt),
+        };
+        const nextCompany: CompanyProfileForm = {
+          name: user.managedCompany?.name ?? "",
+          slug: user.managedCompany?.slug ?? "",
+          description: user.managedCompany?.description ?? "",
+          categoryIds:
+            user.managedCompany?.categories?.map((row) => row.categoryId) ??
+            (user.managedCompany?.categoryId ? [user.managedCompany.categoryId] : []),
+          pointsPerReward: user.managedCompany?.pointsPerReward ?? 100,
+          subscriptionSpendPolicy: user.managedCompany?.subscriptionSpendPolicy ?? "EXCLUDE",
+          levelRules: normalizeLevelRules(user.managedCompany?.levelRules),
+          isActive: user.managedCompany?.isActive ?? true,
+        };
+        const nextSubscriptions = user.managedCompany?.subscriptions ?? [];
+        setInitialAccountState(nextAccount);
+        setInitialCompanyState(nextCompany);
+        setInitialSubscriptionsState(nextSubscriptions);
+        setInitialAccountHash(JSON.stringify(nextAccount));
+        setInitialCompanyHash(JSON.stringify(nextCompany));
+        setInitialSubscriptionsHash(
+          JSON.stringify(
+            [...nextSubscriptions]
+              .sort((a, b) => a.uuid.localeCompare(b.uuid))
+              .map((sub) => ({
+                uuid: sub.uuid,
+                name: sub.name,
+                description: sub.description,
+                price: String(sub.price),
+                renewalPeriod: sub.renewalPeriod,
+                renewalValue: sub.renewalValue,
+                renewalUnit: sub.renewalUnit,
+                promoBonusDays: sub.promoBonusDays,
+                promoEndsAt: sub.promoEndsAt,
+                slug: sub.slug,
+                categoryId: sub.categoryId,
+                isActive: sub.isActive,
+              })),
+          ),
+        );
+        setError(null);
+        setLoading(false);
+      } catch (loadError) {
+        if (ignore) return;
+        setError(loadError instanceof Error ? loadError.message : "Cannot load company profile.");
+        setLoading(false);
+      }
     })();
     return () => {
       ignore = true;
@@ -524,6 +624,82 @@ export default function AdminCompanyProfilePage() {
     window.location.href = "/admin/companies";
   }
 
+  async function createLocation() {
+    if (!locationDraft.address.trim()) {
+      setError("Location address is required.");
+      return;
+    }
+    setLocationSaving(true);
+    const res = await adminCreateCompanyLocation(companyUserUuid, {
+      title: locationDraft.title || undefined,
+      address: locationDraft.address,
+      city: locationDraft.city || undefined,
+      openTime: locationDraft.openTime,
+      closeTime: locationDraft.closeTime,
+      workingDays: locationDraft.workingDays,
+      isMain: locationDraft.isMain,
+      isActive: true,
+    });
+    setLocationSaving(false);
+    if (!res.ok) {
+      setError(String(res.message));
+      return;
+    }
+    setError(null);
+    setNotice("Location geocoded and saved.");
+    setLocationDraft({ title: "", address: "", city: "Moscow", openTime: "09:00", closeTime: "21:00", workingDays: DEFAULT_WORKING_DAYS, isMain: false });
+    await load();
+  }
+
+  async function saveLocation(location: AdminCompanyLocation) {
+    setLocationSaving(true);
+    const res = await adminUpdateCompanyLocation(companyUserUuid, location.uuid, {
+      title: location.title ?? undefined,
+      address: location.address,
+      city: location.city ?? undefined,
+      openTime: location.openTime ?? "09:00",
+      closeTime: location.closeTime ?? "21:00",
+      workingDays: location.workingDays ?? DEFAULT_WORKING_DAYS,
+      isMain: location.isMain,
+      isActive: location.isActive,
+    });
+    setLocationSaving(false);
+    if (!res.ok) {
+      setError(String(res.message));
+      return;
+    }
+    setError(null);
+    setNotice("Location geocoded and updated.");
+    await load();
+  }
+
+  async function removeLocation(locationUuid: string) {
+    const ok = window.confirm("Delete this company address?");
+    if (!ok) return;
+    const res = await adminDeleteCompanyLocation(companyUserUuid, locationUuid);
+    if (!res.ok) {
+      setError(String(res.message));
+      return;
+    }
+    setError(null);
+    setNotice("Location deleted.");
+    await load();
+  }
+
+  function openSection(key: SectionKey) {
+    setSections((prev) => ({ ...prev, [key]: true }));
+    window.requestAnimationFrame(() => {
+      document.getElementById(`company-section-${key}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
+
+  function toggleSection(key: SectionKey) {
+    setSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   async function discardAllChanges() {
     if (initialAccountState) {
       setAccountForm({ ...initialAccountState });
@@ -620,6 +796,30 @@ export default function AdminCompanyProfilePage() {
     setNotice("All changes saved.");
   }
 
+  if (error && !accountForm && !companyForm) {
+    return (
+      <Card className="glass border-destructive/30">
+        <CardContent className="space-y-4 py-6">
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-destructive">Cannot load company profile</p>
+            <p className="text-sm text-muted-foreground">{error}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => void load()}>
+              Retry
+            </Button>
+            <Button asChild variant="ghost">
+              <Link href="/admin/companies">
+                <ArrowLeft className="h-4 w-4" />
+                Back to companies
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (loading || !accountForm || !companyForm) {
     return <p className="text-sm text-muted-foreground">Loading company profile...</p>;
   }
@@ -697,11 +897,43 @@ export default function AdminCompanyProfilePage() {
         Pro tip: draft all edits first, then use <span className="font-medium text-foreground">Save all</span> in the sticky bar for one clean update.
       </div>
 
-      <Card className="glass border-white/10 gap-3 py-4">
-        <CardHeader className="pb-2 pt-4">
+      <Card className="glass border-white/10">
+        <CardContent className="flex flex-wrap gap-2 p-3">
+          {SECTION_META.map((section) => {
+            const Icon = section.icon;
+            const isOpen = sections[section.key];
+            return (
+              <Button
+                key={section.key}
+                type="button"
+                variant={isOpen ? "default" : "secondary"}
+                className="h-auto min-w-[150px] justify-start gap-2 px-3 py-2"
+                onClick={() => openSection(section.key)}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="text-left">
+                  <span className="block text-sm font-semibold">{section.title}</span>
+                  <span className="block text-[11px] opacity-75">{section.description}</span>
+                </span>
+              </Button>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      <Card id="company-section-account" className="scroll-mt-4 glass border-white/10 gap-3 py-4">
+        <CardHeader
+          className={cn("pb-2 pt-4", !sections.account && "cursor-pointer")}
+          onClick={() => {
+            if (!sections.account) openSection("account");
+          }}
+        >
           <div className="flex items-center justify-between gap-2">
             <div className="space-y-1">
-              <CardTitle className="text-base">Company user account</CardTitle>
+              <CardTitle className="inline-flex items-center gap-2 text-base">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Company user account
+              </CardTitle>
               <p className="text-xs text-muted-foreground">Identity and account lifecycle fields.</p>
             </div>
             <div className="flex items-center gap-2">
@@ -709,7 +941,10 @@ export default function AdminCompanyProfilePage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSections((p) => ({ ...p, account: !p.account }))}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSection("account");
+                }}
               >
                 {sections.account ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
@@ -770,19 +1005,295 @@ export default function AdminCompanyProfilePage() {
         </CardContent>}
       </Card>
 
-      <Card className="glass border-white/10 gap-3 py-4">
-        <CardHeader className="pb-2 pt-4">
+      <Card id="company-section-locations" className="scroll-mt-4 glass border-white/10 gap-3 py-4">
+        <CardHeader
+          className={cn("pb-2 pt-4", !sections.locations && "cursor-pointer")}
+          onClick={() => {
+            if (!sections.locations) openSection("locations");
+          }}
+        >
           <div className="flex items-center justify-between gap-2">
             <div className="space-y-1">
-              <CardTitle className="text-base">Company profile</CardTitle>
-      <p className="text-xs text-muted-foreground">Public brand info and reward settings.</p>
+              <CardTitle className="inline-flex items-center gap-2 text-base">
+                <MapPin className="h-4 w-4 text-primary" />
+                Locations
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Add real company addresses. Coordinates are resolved through Yandex Geocoder and stored in the database.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{locations.length} saved</Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSection("locations");
+                }}
+              >
+                {sections.locations ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        {sections.locations && (
+          <CardContent className="space-y-4 pb-4 pt-0">
+            <div className="rounded-xl border border-white/10 bg-muted/10 p-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
+                <div className="space-y-2 xl:col-span-2">
+                  <Label htmlFor="location-title">Label</Label>
+                  <Input
+                    id="location-title"
+                    placeholder="Main branch"
+                    value={locationDraft.title}
+                    onChange={(e) => setLocationDraft((p) => ({ ...p, title: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2 xl:col-span-2">
+                  <Label htmlFor="location-city">City</Label>
+                  <Input
+                    id="location-city"
+                    placeholder="Moscow"
+                    value={locationDraft.city}
+                    onChange={(e) => setLocationDraft((p) => ({ ...p, city: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2 xl:col-span-4">
+                  <Label htmlFor="location-address">Address</Label>
+                  <Input
+                    id="location-address"
+                    placeholder="Moscow, Tverskaya street, 7"
+                    value={locationDraft.address}
+                    onChange={(e) => setLocationDraft((p) => ({ ...p, address: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2 xl:col-span-1">
+                  <Label htmlFor="location-open">Open</Label>
+                  <Input
+                    id="location-open"
+                    type="time"
+                    value={locationDraft.openTime}
+                    onChange={(e) => setLocationDraft((p) => ({ ...p, openTime: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2 xl:col-span-1">
+                  <Label htmlFor="location-close">Close</Label>
+                  <Input
+                    id="location-close"
+                    type="time"
+                    value={locationDraft.closeTime}
+                    onChange={(e) => setLocationDraft((p) => ({ ...p, closeTime: e.target.value }))}
+                  />
+                </div>
+                <div className="flex min-w-0 items-end gap-2 xl:col-span-2">
+                  <Button
+                    type="button"
+                    variant={locationDraft.isMain ? "default" : "secondary"}
+                    onClick={() => setLocationDraft((p) => ({ ...p, isMain: !p.isMain }))}
+                    className="h-10 min-w-0 flex-1"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Main
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void createLocation()}
+                    disabled={locationSaving || !locationDraft.address.trim()}
+                    className="h-10 min-w-0 flex-1"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {WEEKDAY_OPTIONS.map((day) => (
+                  <Button
+                    key={day.value}
+                    type="button"
+                    size="sm"
+                    variant={(locationDraft.workingDays ?? DEFAULT_WORKING_DAYS).includes(day.value) ? "default" : "secondary"}
+                    className="h-7 px-2 text-xs"
+                    onClick={() =>
+                      setLocationDraft((prev) => ({ ...prev, workingDays: toggleWeekday(prev.workingDays ?? DEFAULT_WORKING_DAYS, day.value) }))
+                    }
+                  >
+                    {day.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              {locations.map((location) => (
+                <div key={location.uuid} className="rounded-xl border border-white/10 bg-muted/10 p-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={location.isMain ? "default" : "secondary"}>
+                        {location.isMain ? "MAIN" : "BRANCH"}
+                      </Badge>
+                      <Badge variant={location.isActive ? "outline" : "secondary"}>
+                        {location.isActive ? "ACTIVE" : "INACTIVE"}
+                      </Badge>
+                      {location.precision && <Badge variant="outline">precision: {location.precision}</Badge>}
+                    </div>
+                    <p className="font-mono text-xs text-muted-foreground">
+                      {Number(location.latitude).toFixed(6)}, {Number(location.longitude).toFixed(6)}
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
+                    <div className="space-y-1 xl:col-span-2">
+                      <Label className="text-xs">Label</Label>
+                      <Input
+                        value={location.title ?? ""}
+                        onChange={(e) =>
+                          setLocations((prev) =>
+                            prev.map((item) => (item.uuid === location.uuid ? { ...item, title: e.target.value } : item)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1 xl:col-span-2">
+                      <Label className="text-xs">City</Label>
+                      <Input
+                        value={location.city ?? ""}
+                        onChange={(e) =>
+                          setLocations((prev) =>
+                            prev.map((item) => (item.uuid === location.uuid ? { ...item, city: e.target.value } : item)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1 xl:col-span-4">
+                      <Label className="text-xs">Address</Label>
+                      <Input
+                        value={location.address}
+                        onChange={(e) =>
+                          setLocations((prev) =>
+                            prev.map((item) => (item.uuid === location.uuid ? { ...item, address: e.target.value } : item)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1 xl:col-span-1">
+                      <Label className="text-xs">Open</Label>
+                      <Input
+                        type="time"
+                        value={location.openTime}
+                        onChange={(e) =>
+                          setLocations((prev) =>
+                            prev.map((item) => (item.uuid === location.uuid ? { ...item, openTime: e.target.value } : item)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1 xl:col-span-1">
+                      <Label className="text-xs">Close</Label>
+                      <Input
+                        type="time"
+                        value={location.closeTime}
+                        onChange={(e) =>
+                          setLocations((prev) =>
+                            prev.map((item) => (item.uuid === location.uuid ? { ...item, closeTime: e.target.value } : item)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 xl:col-span-2 xl:flex xl:items-end">
+                      <Button
+                        variant={location.isMain ? "default" : "secondary"}
+                        onClick={() =>
+                          setLocations((prev) =>
+                            prev.map((item) => ({
+                              ...item,
+                              isMain: item.uuid === location.uuid,
+                            })),
+                          )
+                        }
+                        className="min-w-0 flex-1"
+                      >
+                        Main
+                      </Button>
+                      <Button
+                        variant={location.isActive ? "secondary" : "outline"}
+                        onClick={() =>
+                          setLocations((prev) =>
+                            prev.map((item) =>
+                              item.uuid === location.uuid ? { ...item, isActive: !item.isActive } : item,
+                            ),
+                          )
+                        }
+                        className="min-w-0 flex-1"
+                      >
+                        {location.isActive ? "Active" : "Inactive"}
+                      </Button>
+                      <Button onClick={() => void saveLocation(location)} disabled={locationSaving} className="min-w-0 flex-1">
+                        Save
+                      </Button>
+                      <Button variant="destructive" onClick={() => void removeLocation(location.uuid)} className="min-w-0 flex-1">
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {WEEKDAY_OPTIONS.map((day) => (
+                      <Button
+                        key={day.value}
+                        type="button"
+                        size="sm"
+                        variant={(location.workingDays ?? DEFAULT_WORKING_DAYS).includes(day.value) ? "default" : "secondary"}
+                        className="h-7 px-2 text-xs"
+                        onClick={() =>
+                          setLocations((prev) =>
+                            prev.map((item) =>
+                              item.uuid === location.uuid
+                                ? { ...item, workingDays: toggleWeekday(item.workingDays ?? DEFAULT_WORKING_DAYS, day.value) }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        {day.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {locations.length === 0 && (
+                <div className="rounded-xl border border-dashed border-white/15 bg-muted/10 p-5 text-sm text-muted-foreground">
+                  No addresses yet. Add at least one address to show this company on the map.
+                </div>
+              )}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      <Card id="company-section-profile" className="scroll-mt-4 glass border-white/10 gap-3 py-4">
+        <CardHeader
+          className={cn("pb-2 pt-4", !sections.profile && "cursor-pointer")}
+          onClick={() => {
+            if (!sections.profile) openSection("profile");
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="space-y-1">
+              <CardTitle className="inline-flex items-center gap-2 text-base">
+                <Building2 className="h-4 w-4 text-primary" />
+                Company profile
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Public brand info and reward settings.</p>
             </div>
             <div className="flex items-center gap-2">
               {companyDirty && <Badge variant="outline">Unsaved</Badge>}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSections((p) => ({ ...p, profile: !p.profile }))}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSection("profile");
+                }}
               >
                 {sections.profile ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
@@ -1093,11 +1604,19 @@ export default function AdminCompanyProfilePage() {
         </CardContent>}
       </Card>
 
-      <Card className="glass border-white/10 gap-3 py-4">
-        <CardHeader className="pb-2 pt-4">
+      <Card id="company-section-subscriptions" className="scroll-mt-4 glass border-white/10 gap-3 py-4">
+        <CardHeader
+          className={cn("pb-2 pt-4", !sections.subscriptions && "cursor-pointer")}
+          onClick={() => {
+            if (!sections.subscriptions) openSection("subscriptions");
+          }}
+        >
           <div className="flex items-center justify-between gap-2">
             <div className="space-y-1">
-              <CardTitle className="text-base">Subscriptions</CardTitle>
+              <CardTitle className="inline-flex items-center gap-2 text-base">
+                <CircleDollarSign className="h-4 w-4 text-primary" />
+                Subscriptions
+              </CardTitle>
               <p className="text-xs text-muted-foreground">Create, search and batch-edit offers for this company.</p>
             </div>
             <div className="flex items-center gap-2">
@@ -1105,7 +1624,10 @@ export default function AdminCompanyProfilePage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSections((p) => ({ ...p, subscriptions: !p.subscriptions }))}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSection("subscriptions");
+                }}
               >
                 {sections.subscriptions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
@@ -1199,7 +1721,7 @@ export default function AdminCompanyProfilePage() {
                   onChange={(e) => setDraft((p) => ({ ...p, slug: e.target.value }))}
                 />
               </div>
-              <div className="space-y-2 xl:col-span-5">
+              <div className="space-y-2 xl:col-span-4">
               <Label htmlFor="sub-draft-category" className="inline-flex items-center gap-1.5">
                 <Tag className="h-3.5 w-3.5 text-primary" />
                 Category

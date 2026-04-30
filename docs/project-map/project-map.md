@@ -27,15 +27,14 @@ whitebox/
       ui/
     lib/
       api/
-      mockData.ts
       prisma.ts
   docs/project-map/
 ```
 
 ## Important app routes
 
-- TWA (mobile): `/`, `/companies`, `/marketplace`, `/wallet/[id]`, `/map`, `/history`, `/scan`, `/settings`
-- Admin (desktop): `/admin`, `/admin/users`, `/admin/users/[uuid]`, `/admin/categories`, `/admin/companies`, `/admin/companies/[uuid]`, `/admin/subscriptions`, `/admin/database`
+- TWA (mobile): `/`, `/onboarding`, `/companies`, `/marketplace`, `/wallet/[id]`, `/map`, `/history`, `/scan`, `/settings`
+- Admin (desktop): `/admin`, `/admin/users`, `/admin/users/[uuid]`, `/admin/categories`, `/admin/companies`, `/admin/companies/[uuid]`, `/admin/subscriptions`, `/admin/growth`, `/admin/database`
 - Admin operations: `/admin/audit`, `/admin/audit/new`, `/admin/audit/backups`
 - Company (desktop): `/company`, `/company/payments`, `/company/compliance`
 
@@ -47,9 +46,13 @@ whitebox/
 - `src/app/(portal)/admin/categories/page.tsx` - category CRUD workspace.
 - `src/app/(portal)/admin/companies/[uuid]/page.tsx` - company profile + company-bound subscriptions CRUD.
 - `src/app/(portal)/admin/database/page.tsx` - interactive DB map (zoom/pan/relations).
+- `src/app/(portal)/admin/growth/page.tsx` - promo code and referral campaign controls.
 - `src/app/(portal)/admin/audit/page.tsx` - audit feed UI with workspace filters.
 - `src/app/(portal)/admin/audit/backups/page.tsx` - DB backups manager + restore statuses.
+- `src/app/(twa)/onboarding/page.tsx` - first-run tutorial with skip flow.
+- `src/app/(twa)/settings/page.tsx` - rich profile, privacy, promo and referral actions.
 - `src/lib/api/admin-client.ts` - admin HTTP client methods.
+- `src/lib/api/twa-client.ts` - TWA registered API read/actions client.
 - `apps/api/src/admin/admin.controller.ts` - admin endpoints.
 - `apps/api/src/admin/admin.service.ts` - admin business logic.
 - `apps/api/src/maintenance/maintenance.guard.ts` - global API lock during restore.

@@ -11,7 +11,7 @@ const navItems = [
   { href: "/map", label: "Map", icon: MapPin },
   { href: "/scan", label: "Scan", icon: QrCode, isFab: true },
   { href: "/history", label: "History", icon: History },
-  { href: "/settings", label: "Settings", icon: User },
+  { href: "/settings", label: "Profile", icon: User },
 ];
 
 export function BottomNav() {
@@ -19,27 +19,29 @@ export function BottomNav() {
   const isWallet = pathname.startsWith("/wallet/");
   const isSubscriptionDetail = pathname.startsWith("/marketplace/") && pathname !== "/marketplace";
   const hideNav = isWallet || isSubscriptionDetail;
+  const hideFab = pathname === "/onboarding" || pathname === "/settings" || pathname.startsWith("/settings/");
 
   if (hideNav) return null;
 
   return (
     <>
-      {/* Central FAB - above nav bar */}
-      <motion.div
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", bounce: 0.4, duration: 0.5 }}
-        className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 md:bottom-24"
-        style={{ maxWidth: 430, marginLeft: "auto", marginRight: "auto" }}
-      >
-        <Link
-          href="/scan"
-          className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-transform active:scale-95 hover:bg-primary/90"
-          aria-label="Scan QR"
+      {!hideFab && (
+        <motion.div
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", bounce: 0.4, duration: 0.5 }}
+          className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 md:bottom-24"
+          style={{ maxWidth: 430, marginLeft: "auto", marginRight: "auto" }}
         >
-          <QrCode className="h-7 w-7" strokeWidth={2.5} />
-        </Link>
-      </motion.div>
+          <Link
+            href="/scan"
+            className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-transform active:scale-95 hover:bg-primary/90"
+            aria-label="Scan QR"
+          >
+            <QrCode className="h-7 w-7" strokeWidth={2.5} />
+          </Link>
+        </motion.div>
+      )}
 
       {/* Bottom nav bar - 4 tabs (no Scan in bar) */}
       <nav

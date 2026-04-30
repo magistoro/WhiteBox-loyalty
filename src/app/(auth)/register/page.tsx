@@ -40,7 +40,7 @@ export default function RegisterPage() {
         return;
       }
       setStoredSession(data);
-      router.replace(data.needsCategoryOnboarding ? "/settings/favorites?onboarding=1" : "/");
+      router.replace(data.needsCategoryOnboarding ? "/onboarding" : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

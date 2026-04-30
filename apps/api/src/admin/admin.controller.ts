@@ -26,13 +26,16 @@ import { CreateBackupDto } from "./dto/create-backup.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { CreateCompanySubscriptionDto } from "./dto/create-company-subscription.dto";
 import { CreateAccountDto } from "./dto/create-account.dto";
+import { CreatePromoCodeDto } from "./dto/create-promo-code.dto";
 import { RequestEmailChangeDto } from "./dto/request-email-change.dto";
 import { RestoreBackupDto } from "./dto/restore-backup.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { UpdateCompanySubscriptionDto } from "./dto/update-company-subscription.dto";
 import { UpdateCompanyUserDto } from "./dto/update-company-user.dto";
+import { UpdateReferralCampaignDto } from "./dto/update-referral-campaign.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
+import { UpsertCompanyLocationDto } from "./dto/upsert-company-location.dto";
 import { UpsertCompanyProfileDto } from "./dto/upsert-company-profile.dto";
 
 /**
@@ -152,6 +155,39 @@ export class AdminController {
   @ApiOperation({ summary: "Find subscription by UUID" })
   findSubscription(@Param("uuid") uuid: string) {
     return this.adminService.findSubscriptionByUuid(uuid);
+  }
+
+  @Get("promo-codes")
+  @ApiOperation({ summary: "List promo codes and redemption stats" })
+  listPromoCodes() {
+    return this.adminService.listPromoCodes();
+  }
+
+  @Post("promo-codes")
+  @ApiOperation({ summary: "Create promo code for points or subscription activation" })
+  @ApiBody({ type: CreatePromoCodeDto })
+  createPromoCode(@Body() dto: CreatePromoCodeDto) {
+    return this.adminService.createPromoCode(dto);
+  }
+
+  @Patch("promo-codes/:id")
+  @ApiOperation({ summary: "Update promo code" })
+  @ApiBody({ type: CreatePromoCodeDto })
+  updatePromoCode(@Param("id") id: string, @Body() dto: Partial<CreatePromoCodeDto>) {
+    return this.adminService.updatePromoCode(Number(id), dto);
+  }
+
+  @Get("referral-campaign")
+  @ApiOperation({ summary: "Get referral campaign rules and stats" })
+  getReferralCampaign() {
+    return this.adminService.getReferralCampaignAdmin();
+  }
+
+  @Patch("referral-campaign")
+  @ApiOperation({ summary: "Update referral campaign rules" })
+  @ApiBody({ type: UpdateReferralCampaignDto })
+  updateReferralCampaign(@Body() dto: UpdateReferralCampaignDto) {
+    return this.adminService.updateReferralCampaign(dto);
   }
 
   @Get("categories")
@@ -319,6 +355,30 @@ export class AdminController {
   @ApiOperation({ summary: "List subscriptions owned by company user" })
   listCompanySubscriptions(@Param("uuid") uuid: string) {
     return this.adminService.listCompanySubscriptions(uuid);
+  }
+
+  @Post("company-users/:uuid/locations")
+  @ApiOperation({ summary: "Create company location and resolve coordinates from address" })
+  @ApiBody({ type: UpsertCompanyLocationDto })
+  createCompanyLocation(@Param("uuid") uuid: string, @Body() dto: UpsertCompanyLocationDto) {
+    return this.adminService.createCompanyLocation(uuid, dto);
+  }
+
+  @Patch("company-users/:uuid/locations/:locationUuid")
+  @ApiOperation({ summary: "Update company location and re-resolve coordinates when address changes" })
+  @ApiBody({ type: UpsertCompanyLocationDto })
+  updateCompanyLocation(
+    @Param("uuid") uuid: string,
+    @Param("locationUuid") locationUuid: string,
+    @Body() dto: UpsertCompanyLocationDto,
+  ) {
+    return this.adminService.updateCompanyLocation(uuid, locationUuid, dto);
+  }
+
+  @Delete("company-users/:uuid/locations/:locationUuid")
+  @ApiOperation({ summary: "Delete company location" })
+  deleteCompanyLocation(@Param("uuid") uuid: string, @Param("locationUuid") locationUuid: string) {
+    return this.adminService.deleteCompanyLocation(uuid, locationUuid);
   }
 
   @Get("company-users/:uuid/clients")
