@@ -112,6 +112,25 @@ export type AdminCompanySubscription = {
   updatedAt: string;
 };
 
+export type AdminCompanyLocation = {
+  id: number;
+  uuid: string;
+  companyId: number;
+  title: string | null;
+  address: string;
+  city: string | null;
+  latitude: string;
+  longitude: string;
+  precision: string | null;
+  openTime: string;
+  closeTime: string;
+  workingDays: number[];
+  isMain: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AdminCompanyUser = {
   id: number;
   uuid: string;
@@ -147,6 +166,7 @@ export type AdminCompanyUser = {
       cashbackPercent: string;
       sortOrder: number;
     }>;
+    locations?: AdminCompanyLocation[];
     isActive: boolean;
   } | null;
 };
@@ -252,6 +272,40 @@ export type AdminSubscriptionStats = {
     activeSubscribers: number;
     estimatedMonthlyRevenue: number;
   }>;
+};
+
+export type AdminPromoCode = {
+  id: number;
+  code: string;
+  title: string;
+  description: string | null;
+  rewardType: "POINTS" | "SUBSCRIPTION";
+  points: number;
+  subscriptionId: number | null;
+  maxRedemptions: number | null;
+  expiresAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  redemptionCount: number;
+  company: { id: number; slug: string; name: string } | null;
+  subscription: { uuid: string; slug: string; name: string } | null;
+};
+
+export type AdminReferralCampaign = {
+  id: number;
+  title: string;
+  inviterBonusPoints: number;
+  invitedBonusPoints: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  bonusCompany: { id: number; slug: string; name: string } | null;
+  stats: {
+    createdInvites: number;
+    redeemedInvites: number;
+    rewardedInvites: number;
+  };
 };
 
 export type AdminUserDetail = {
@@ -569,18 +623,31 @@ export async function adminListCompanyUsers(query?: string) {
   const params = new URLSearchParams();
   if (query) params.set("query", query);
   const suffix = params.toString() ? `?${params}` : "";
-  const res = await fetch(`${apiBase()}/admin/company-users${suffix}`, { headers: authHeaders() });
-  if (!res.ok) return [];
-  return (await res.json()) as AdminCompanyUser[];
+  try {
+    const res = await fetch(`${apiBase()}/admin/company-users${suffix}`, { headers: authHeaders() });
+    if (!res.ok) return [];
+    return (await res.json()) as AdminCompanyUser[];
+  } catch {
+    return [];
+  }
 }
 
 export async function adminGetCompanyUser(uuid: string) {
-  const res = await fetch(`${apiBase()}/admin/company-users/${uuid}`, { headers: authHeaders() });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    return { ok: false as const, status: res.status, message: data.message ?? "Failed" };
+  try {
+    const res = await fetch(`${apiBase()}/admin/company-users/${uuid}`, { headers: authHeaders() });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      return { ok: false as const, status: res.status, message: message ?? "Failed" };
+    }
+    return { ok: true as const, data: (await res.json()) as AdminCompanyUser & { managedCompany: (AdminCompanyUser["managedCompany"] & { subscriptions: AdminCompanySubscription[] }) | null } };
+  } catch (error) {
+    return {
+      ok: false as const,
+      status: 0,
+      message: error instanceof Error ? error.message : "Network error",
+    };
   }
-  return { ok: true as const, data: (await res.json()) as AdminCompanyUser & { managedCompany: (AdminCompanyUser["managedCompany"] & { subscriptions: AdminCompanySubscription[] }) | null } };
 }
 
 export async function adminUpdateCompanyUser(uuid: string, input: {
@@ -611,6 +678,65 @@ export async function adminDeleteCompanyUser(uuid: string) {
     return { ok: false as const, message: data.message ?? "Failed to delete company user" };
   }
   return { ok: true as const };
+}
+
+export async function adminCreateCompanyLocation(uuid: string, input: {
+  title?: string;
+  address: string;
+  city?: string;
+  openTime?: string;
+  closeTime?: string;
+  workingDays?: number[];
+  isMain?: boolean;
+  isActive?: boolean;
+}) {
+  const res = await fetch(`${apiBase()}/admin/company-users/${uuid}/locations`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+    return { ok: false as const, message: message ?? "Failed to create company location" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminCompanyLocation };
+}
+
+export async function adminUpdateCompanyLocation(uuid: string, locationUuid: string, input: {
+  title?: string;
+  address: string;
+  city?: string;
+  openTime?: string;
+  closeTime?: string;
+  workingDays?: number[];
+  isMain?: boolean;
+  isActive?: boolean;
+}) {
+  const res = await fetch(`${apiBase()}/admin/company-users/${uuid}/locations/${locationUuid}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+    return { ok: false as const, message: message ?? "Failed to update company location" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminCompanyLocation };
+}
+
+export async function adminDeleteCompanyLocation(uuid: string, locationUuid: string) {
+  const res = await fetch(`${apiBase()}/admin/company-users/${uuid}/locations/${locationUuid}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+    return { ok: false as const, message: message ?? "Failed to delete company location" };
+  }
+  return { ok: true as const, data: (await res.json()) as { success: true } };
 }
 
 export async function adminListCompanyClients(
@@ -755,6 +881,93 @@ export async function adminFindSubscriptionByUuid(uuid: string) {
     slug: string;
     description: string;
   };
+}
+
+export async function adminListPromoCodes() {
+  try {
+    const res = await fetch(`${apiBase()}/admin/promo-codes`, { headers: authHeaders() });
+    if (!res.ok) return [];
+    return (await res.json()) as AdminPromoCode[];
+  } catch {
+    return [];
+  }
+}
+
+export async function adminCreatePromoCode(input: {
+  code: string;
+  title: string;
+  description?: string;
+  rewardType: "POINTS" | "SUBSCRIPTION";
+  points?: number;
+  companyUuid?: string;
+  subscriptionUuid?: string;
+  maxRedemptions?: number | null;
+  expiresAt?: string | null;
+  isActive?: boolean;
+}) {
+  const res = await fetch(`${apiBase()}/admin/promo-codes`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+    return { ok: false as const, message: message ?? "Failed to create promo code" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminPromoCode };
+}
+
+export async function adminUpdatePromoCode(id: number, input: Partial<{
+  code: string;
+  title: string;
+  description: string;
+  rewardType: "POINTS" | "SUBSCRIPTION";
+  points: number;
+  companyUuid: string;
+  subscriptionUuid: string;
+  maxRedemptions: number | null;
+  expiresAt: string | null;
+  isActive: boolean;
+}>) {
+  const res = await fetch(`${apiBase()}/admin/promo-codes/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+    return { ok: false as const, message: message ?? "Failed to update promo code" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminPromoCode };
+}
+
+export async function adminGetReferralCampaign() {
+  try {
+    const res = await fetch(`${apiBase()}/admin/referral-campaign`, { headers: authHeaders() });
+    if (!res.ok) return null;
+    return (await res.json()) as AdminReferralCampaign;
+  } catch {
+    return null;
+  }
+}
+
+export async function adminUpdateReferralCampaign(input: Partial<Pick<
+  AdminReferralCampaign,
+  "title" | "inviterBonusPoints" | "invitedBonusPoints" | "isActive"
+>> & { bonusCompanyUuid?: string | null }) {
+  const res = await fetch(`${apiBase()}/admin/referral-campaign`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+    return { ok: false as const, message: message ?? "Failed to update referral campaign" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminReferralCampaign };
 }
 
 export async function adminListAuditEvents(options?: {

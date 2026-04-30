@@ -36,6 +36,7 @@ Role checks happen in two places:
 - Interactive DB map (`/admin/database`) to visualize Prisma entities and relations.
 - Audit workspace (`/admin/audit`, `/admin/audit/new`) for manager/developer events.
 - Backup workspace (`/admin/audit/backups`) for DB snapshot lifecycle.
+- Growth workspace (`/admin/growth`) for promo codes and referral campaign configuration.
 
 ## Data flow examples
 
@@ -66,7 +67,24 @@ Role checks happen in two places:
 1. UI calls `/api/registered/categories`
 2. `RegisteredService` returns sorted categories with favorite flags
 
+### TWA marketplace and wallet
+
+1. UI calls registered read-model endpoints (`/marketplace`, `/companies`, `/wallet`, `/history`).
+2. `RegisteredService` reads Prisma entities and returns UI-ready payloads.
+3. Company levels are calculated from user spend totals and `CompanyLevelRule`.
+4. Subscription activation currently creates `UserSubscription` directly; payment providers are planned as a later adapter layer.
+5. Wallet detail requests `/api/registered/qr`; the API returns a UUID-based payload and the client renders a fresh QR in canvas.
+6. Partner and category screens filter against real company/category relations, including additional `CompanyCategory` links.
+
+### TWA onboarding and growth
+
+1. New CLIENT registration redirects to `/onboarding`.
+2. Tutorial completion/skip is persisted through registered endpoints into `UserProfilePreference`.
+3. `/settings` calls `GET /api/registered/profile` for activity stats, preferences, favorite categories, and referral code.
+4. Promo-code redemption validates `PromoCode` state and writes `PromoCodeRedemption`.
+5. Referral redemption uses admin-controlled `ReferralCampaign` values and records the invite as rewarded.
+
 ## Testing
 
 - Unit tests run in `apps/api` via Jest (`npm run api:test`).
-- Coverage includes `AuthService` and `AdminService` scenarios.
+- Coverage includes `AuthService`, `AdminService`, and `RegisteredService` scenarios.

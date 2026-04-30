@@ -1,27 +1,36 @@
-"use client";
+﻿"use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { transactions } from "@/lib/mockData";
-import { getExpiredSubscriptions } from "@/services/subscriptions/subscription.service";
+import { Archive, ArrowDownLeft, ArrowUpRight, History as HistoryIcon } from "lucide-react";
+import { getTwaHistory, type TwaHistory, type TwaUserSubscription } from "@/lib/api/twa-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowDownLeft, ArrowUpRight, History as HistoryIcon, Archive } from "lucide-react";
+import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import { cn } from "@/lib/utils";
-import { SubscriptionHistoryList } from "@/components/subscriptions/history/SubscriptionHistoryList";
 
 function formatDate(iso: string) {
   const d = new Date(iso);
   const now = new Date();
-  const diffDays = Math.floor(
-    (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays} days ago`;
   return d.toLocaleDateString();
+}
+
+function formatPlanPrice(subscription: TwaUserSubscription) {
+  const plan = subscription.subscription;
+  return `$${plan.price}/${plan.renewalUnit || "month"}`;
+}
+
+function subscriptionStatusLabel(status: TwaUserSubscription["status"]) {
+  if (status === "CANCELED") return "Canceled";
+  if (status === "EXPIRED") return "Expired";
+  return "Active";
 }
 
 const container = {
@@ -38,29 +47,32 @@ const item = {
 };
 
 export default function HistoryPage() {
-  const sortedTransactions = useMemo(
-    () =>
-      [...transactions].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      ),
-    []
-  );
+  const [history, setHistory] = useState<TwaHistory>({
+    transactions: [],
+    archivedSubscriptions: [],
+  });
+  const [loading, setLoading] = useState(true);
 
-  const expiredSubscriptions = useMemo(() => getExpiredSubscriptions(), []);
+  useEffect(() => {
+    let ignore = false;
+    void getTwaHistory().then((data) => {
+      if (ignore) return;
+      setHistory(data);
+      setLoading(false);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.25 }}
-      className="min-h-full px-4 pt-6 pb-4"
+      className="min-h-full px-4 pb-4 pt-6"
     >
-      <motion.section
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="mb-4"
-      >
+      <motion.section variants={container} initial="hidden" animate="show" className="mb-4">
         <motion.div variants={item} className="mb-1 flex items-center gap-2">
           <HistoryIcon className="h-5 w-5 text-muted-foreground" />
           <h1 className="text-lg font-semibold">History</h1>
@@ -71,83 +83,118 @@ export default function HistoryPage() {
       </motion.section>
 
       <Tabs defaultValue="activity" className="w-full">
-        <TabsList className="glass border-white/10 mb-4 w-full">
+        <TabsList className="glass mb-4 w-full border-white/10">
           <TabsTrigger value="activity" className="flex-1">
-            <ArrowDownLeft className="h-4 w-4 mr-1.5" />
+            <ArrowDownLeft className="mr-1.5 h-4 w-4" />
             Activity
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="flex-1">
-            <Archive className="h-4 w-4 mr-1.5" />
+            <Archive className="mr-1.5 h-4 w-4" />
             Subscriptions
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="activity" className="mt-0">
           <ScrollArea className="h-[calc(100dvh-14rem)] pr-2">
-            <motion.ul
-              variants={container}
-              initial="hidden"
-              animate="show"
-              className="space-y-2"
-            >
-              {sortedTransactions.map((tx) => (
-                <motion.li key={tx.id} variants={item}>
+            <ul className="space-y-1.5">
+              {history.transactions.map((tx, index) => (
+                <motion.li
+                  key={tx.uuid}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: Math.min(index * 0.035, 0.24) }}
+                >
                   <Card className="glass border-white/10">
-                    <CardContent className="flex items-center gap-3 px-4 py-3">
+                    <CardContent className="flex min-h-[48px] items-center gap-3 px-3 py-1">
                       <div
                         className={cn(
-                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                          tx.type === "earn"
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                          tx.type === "EARN"
                             ? "bg-emerald-500/20 text-emerald-400"
-                            : "bg-amber-500/20 text-amber-400"
+                            : "bg-amber-500/20 text-amber-400",
                         )}
                       >
-                        {tx.type === "earn" ? (
-                          <ArrowDownLeft className="h-5 w-5" />
-                        ) : (
-                          <ArrowUpRight className="h-5 w-5" />
-                        )}
+                        {tx.type === "EARN" ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{tx.companyName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDate(tx.date)}
-                        </p>
+                        <p className="truncate text-base font-semibold">{tx.company.name}</p>
+                        <p className="line-clamp-2 text-xs leading-snug text-muted-foreground">{tx.description ?? formatDate(tx.occurredAt)}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <span
-                          className={cn(
-                            "tabular-nums font-semibold",
-                            tx.type === "earn"
-                              ? "text-emerald-400"
-                              : "text-amber-400"
-                          )}
-                        >
-                          {tx.type === "earn" ? "+" : "-"}
+                        <span className={cn("text-sm tabular-nums font-semibold", tx.type === "EARN" ? "text-emerald-400" : "text-amber-400")}>
+                          {tx.type === "EARN" ? "+" : "-"}
                           {Math.abs(tx.amount)}
                         </span>
-                        <Badge
-                          variant={
-                            tx.status === "active" ? "default" : "secondary"
-                          }
-                          className="text-[10px]"
-                        >
-                          {tx.status === "active" ? "Active" : "Expired"}
+                        <Badge variant={tx.status === "ACTIVE" ? "default" : "secondary"} className="px-2.5 py-1 text-xs">
+                          {tx.status === "ACTIVE" ? "Active" : "Expired"}
                         </Badge>
                       </div>
                     </CardContent>
                   </Card>
                 </motion.li>
               ))}
-            </motion.ul>
+            </ul>
+            {!loading && history.transactions.length === 0 && (
+              <p className="py-8 text-center text-sm text-muted-foreground">No loyalty activity yet.</p>
+            )}
           </ScrollArea>
         </TabsContent>
 
         <TabsContent value="subscriptions" className="mt-0">
           <ScrollArea className="h-[calc(100dvh-14rem)] pr-2">
-            <SubscriptionHistoryList
-              expiredSubscriptions={expiredSubscriptions}
-            />
+            <div className="space-y-1.5">
+              {history.archivedSubscriptions.map((subscription, index) => {
+                const plan = subscription.subscription;
+                const category = plan.category;
+                return (
+                  <motion.div
+                    key={subscription.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: Math.min(index * 0.035, 0.24) }}
+                  >
+                    <Link href={`/marketplace/${plan.uuid}`} className="block">
+                      <Card className="glass border-white/10 transition-all hover:border-white/20">
+                        <CardContent className="px-3 py-1">
+                          <div className="flex min-h-[48px] items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                {category && (
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/20 text-muted-foreground">
+                                    <CategoryIcon iconName={category.icon ?? "Circle"} className="h-4 w-4" />
+                                  </span>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="truncate text-base font-semibold">{plan.name}</p>
+                                  <p className="mt-0.5 truncate text-xs leading-snug text-muted-foreground">
+                                    {formatPlanPrice(subscription)}
+                                    {category ? ` В· ${category.name}` : ""}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold",
+                                subscription.status === "CANCELED"
+                                  ? "border-red-400/30 bg-red-500/15 text-red-300"
+                                  : "bg-muted/40 text-muted-foreground",
+                              )}
+                            >
+                              {subscriptionStatusLabel(subscription.status)}
+                            </Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  </motion.div>
+                );
+              })}
+            </div>
+            {!loading && history.archivedSubscriptions.length === 0 && (
+              <p className="py-8 text-center text-sm text-muted-foreground">No archived subscriptions yet.</p>
+            )}
           </ScrollArea>
         </TabsContent>
       </Tabs>

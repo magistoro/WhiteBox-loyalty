@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, CreditCard, Database, FileCheck, LayoutDashboard, Shield, Tag, Users } from "lucide-react";
+import { Building2, CreditCard, Database, FileCheck, Gift, LayoutDashboard, Shield, Tag, Users } from "lucide-react";
 import { WhiteBoxLogo } from "@/components/brand/WhiteBoxLogo";
 import { PageTransition } from "@/components/PageTransition";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,10 @@ const adminMenu = [
   },
   {
     group: "Subscriptions",
-    items: [{ href: "/admin/subscriptions", label: "Statistics & UUID lookup", icon: LayoutDashboard }],
+    items: [
+      { href: "/admin/subscriptions", label: "Statistics & UUID lookup", icon: LayoutDashboard },
+      { href: "/admin/growth", label: "Growth tools", icon: Gift },
+    ],
   },
   {
     group: "Operations",

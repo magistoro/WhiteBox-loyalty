@@ -59,6 +59,9 @@ describe("AdminService", () => {
     $transaction: jest.Mock;
     userSubscription: { count: jest.Mock; findMany: jest.Mock };
     subscription: { findUnique: jest.Mock; count: jest.Mock };
+    promoCode: { findMany: jest.Mock; findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+    referralCampaign: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
+    referralInvite: { count: jest.Mock };
   };
   const config = {
     get: (key: string) => {
@@ -127,6 +130,18 @@ describe("AdminService", () => {
       $transaction: jest.fn().mockResolvedValue([]),
       userSubscription: { count: jest.fn(), findMany: jest.fn() },
       subscription: { findUnique: jest.fn(), count: jest.fn() },
+      promoCode: {
+        findMany: jest.fn(),
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      referralCampaign: {
+        findFirst: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      referralInvite: { count: jest.fn() },
     };
     service = new AdminService(prisma as never, config as never, maintenance as never);
   });
@@ -334,6 +349,80 @@ describe("AdminService", () => {
         renewalPeriod: "month",
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("createPromoCode creates normalized points campaign", async () => {
+    prisma.promoCode.findUnique.mockResolvedValue(null);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 9,
+      uuid: "company-user",
+      role: "COMPANY",
+      managedCompany: { id: 44 },
+    });
+    prisma.promoCode.create.mockImplementation(async ({ data }) => ({
+      id: 1,
+      ...data,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      subscription: null,
+      redemptions: [],
+    }));
+
+    const result = await service.createPromoCode({
+      code: " welcome500 ",
+      title: "Welcome bonus",
+      rewardType: "POINTS",
+      points: 500,
+      companyUuid: "company-user",
+    });
+
+    expect(prisma.promoCode.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          code: "WELCOME500",
+          points: 500,
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ code: "WELCOME500", redemptionCount: 0 });
+  });
+
+  it("createPromoCode requires subscription uuid for subscription rewards", async () => {
+    prisma.promoCode.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.createPromoCode({
+        code: "FREEPASS",
+        title: "Free pass",
+        rewardType: "SUBSCRIPTION",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("updateReferralCampaign persists mutable referral conditions", async () => {
+    prisma.referralCampaign.findFirst.mockResolvedValue({ id: 1, title: "Invite", inviterBonusPoints: 100, invitedBonusPoints: 100, isActive: true });
+    prisma.referralCampaign.update.mockResolvedValue({ id: 1, title: "Spring invite", inviterBonusPoints: 300, invitedBonusPoints: 200, isActive: false });
+    prisma.referralInvite.count.mockResolvedValue(0);
+
+    const result = await service.updateReferralCampaign({
+      title: "Spring invite",
+      inviterBonusPoints: 300,
+      invitedBonusPoints: 200,
+      isActive: false,
+    });
+
+    expect(prisma.referralCampaign.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 1 },
+        data: expect.objectContaining({
+          title: "Spring invite",
+          inviterBonusPoints: 300,
+          invitedBonusPoints: 200,
+          isActive: false,
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ title: "Spring invite", stats: expect.any(Object) });
   });
 
   it("updateUserByUuid throws not found when user does not exist", async () => {

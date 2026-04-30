@@ -69,7 +69,21 @@ Admin routes (`/api/admin/*`, ADMIN only):
 - `DELETE /api/admin/backups/:backupId` - delete snapshot
 - `GET /api/admin/backups/restore-status` - live restore process status
 
+Registered routes (`/api/registered/*`, CLIENT only):
+
+- `GET /api/registered/dashboard` - TWA dashboard read model from DB
+- `GET /api/registered/marketplace` - active subscription marketplace from DB
+- `GET /api/registered/companies` - companies with user points and level progress
+- `GET /api/registered/wallet` - wallet cards and total point balance
+- `GET /api/registered/qr` - current-user QR payload
+- `GET /api/registered/history` - loyalty history and archived subscriptions
+- `GET /api/registered/subscriptions/active` - active subscriptions
+- `GET /api/registered/subscriptions/archive` - expired/canceled subscriptions
+- `POST /api/registered/subscriptions/:uuid/activate` - activate subscription in the current non-payment flow
+
 Set `NEXT_PUBLIC_API_URL=http://localhost:3001/api` for the Next.js auth and admin API clients.
+Set `NEXT_PUBLIC_YANDEX_MAPS_API_KEY=<key>` to enable the Yandex Maps JS API integration on `/map`.
+Set `YANDEX_GEOCODER_API_KEY=<key>` to let admin company locations resolve addresses into saved coordinates.
 
 ## Backup and Restore Safety
 
@@ -96,6 +110,7 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:3001/api` for the Next.js auth and adm
 - `/admin/audit/new` - manual audit event creation
 - `/admin/audit/backups` - save/download/restore/delete DB snapshots
 - `/email-change/confirm?token=...` - public confirmation page for user email change
+- `/loyalty-cards` - TWA list of companies where the user has earned points
 
 ## Tests
 
@@ -109,6 +124,9 @@ npm run api:test
 
 - `Min redeem` (stored as `pointsPerReward`) defines the minimum points threshold from which a client can redeem points.
 - Level validation prevents invalid cashback ladders: for higher spend thresholds, cashback must stay the same or increase.
+- TWA marketplace, partners, category, wallet, map, and history screens are backed by registered API read models instead of mock data.
+- Company addresses are stored as `CompanyLocation` rows; admin company pages can geocode addresses and `/map` renders saved location coordinates.
+- Partner/category filtering respects multi-category company relations.
 
 ## Build
 
@@ -116,6 +134,15 @@ npm run api:test
 npm run build
 npm run api:build
 ```
+
+## Deployment
+
+For the investor demo / production preview, deploy to Railway as two Node services:
+
+- `whitebox-api` - NestJS API
+- `whitebox-web` - Next.js web app
+
+See `docs/deployment-railway.md` for build commands, start commands, environment variables, and the post-deploy checklist.
 
 ## Docs
 

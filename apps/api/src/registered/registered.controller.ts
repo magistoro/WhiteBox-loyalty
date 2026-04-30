@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Put, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
 import { CurrentUser, type RequestUser } from "../auth/decorators/current-user.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { UpdateFavoriteCategoriesDto } from "./dto/update-favorite-categories.dto";
+import { RedeemCodeDto } from "./dto/redeem-code.dto";
+import { UpdateProfilePreferencesDto } from "./dto/update-profile-preferences.dto";
 import { RegisteredService } from "./registered.service";
 
 /**
@@ -22,10 +24,46 @@ export class RegisteredController {
   @Get("profile")
   @ApiOperation({ summary: "Example route for any logged-in user" })
   profile(@CurrentUser() user: RequestUser) {
-    return {
-      scope: "registered",
-      user,
-    };
+    return this.registeredService.profile(user.userId);
+  }
+
+  @Post("onboarding/complete")
+  @ApiOperation({ summary: "Mark first-run onboarding as completed" })
+  completeOnboarding(@CurrentUser() user: RequestUser) {
+    return this.registeredService.completeOnboarding(user.userId);
+  }
+
+  @Post("onboarding/skip")
+  @ApiOperation({ summary: "Skip first-run onboarding" })
+  skipOnboarding(@CurrentUser() user: RequestUser) {
+    return this.registeredService.skipOnboarding(user.userId);
+  }
+
+  @Put("profile/preferences")
+  @ApiBody({ type: UpdateProfilePreferencesDto })
+  @ApiOperation({ summary: "Update current user's profile privacy/preferences" })
+  updateProfilePreferences(@CurrentUser() user: RequestUser, @Body() dto: UpdateProfilePreferencesDto) {
+    return this.registeredService.updateProfilePreferences(user.userId, dto);
+  }
+
+  @Get("referral")
+  @ApiOperation({ summary: "Current user's referral code and campaign settings" })
+  referral(@CurrentUser() user: RequestUser) {
+    return this.registeredService.referralStatus(user.userId);
+  }
+
+  @Post("referral/redeem")
+  @ApiBody({ type: RedeemCodeDto })
+  @ApiOperation({ summary: "Redeem a friend's referral code" })
+  redeemReferral(@CurrentUser() user: RequestUser, @Body() dto: RedeemCodeDto) {
+    return this.registeredService.redeemReferralCode(user.userId, dto.code);
+  }
+
+  @Post("promo/redeem")
+  @ApiBody({ type: RedeemCodeDto })
+  @ApiOperation({ summary: "Redeem promo code for bonus points or subscription activation" })
+  redeemPromo(@CurrentUser() user: RequestUser, @Body() dto: RedeemCodeDto) {
+    return this.registeredService.redeemPromoCode(user.userId, dto.code);
   }
 
   @Get("categories")
@@ -50,5 +88,60 @@ export class RegisteredController {
     @Body() dto: UpdateFavoriteCategoriesDto,
   ) {
     return this.registeredService.replaceFavoriteCategories(user.userId, dto.categorySlugs);
+  }
+
+  @Get("dashboard")
+  @ApiOperation({ summary: "TWA dashboard data from database" })
+  dashboard(@CurrentUser() user: RequestUser) {
+    return this.registeredService.dashboard(user.userId);
+  }
+
+  @Get("marketplace")
+  @ApiOperation({ summary: "TWA marketplace categories and active subscription plans" })
+  @ApiQuery({ name: "category", required: false, type: String })
+  marketplace(@CurrentUser() user: RequestUser, @Query("category") category?: string) {
+    return this.registeredService.marketplace(user.userId, category);
+  }
+
+  @Get("companies")
+  @ApiOperation({ summary: "TWA partner companies with user points and level progress" })
+  companies(@CurrentUser() user: RequestUser) {
+    return this.registeredService.listCompanies(user.userId);
+  }
+
+  @Get("wallet")
+  @ApiOperation({ summary: "TWA wallet cards and total point balance" })
+  wallet(@CurrentUser() user: RequestUser) {
+    return this.registeredService.wallet(user.userId);
+  }
+
+  @Get("qr")
+  @ApiOperation({ summary: "Current user's QR payload" })
+  qr(@CurrentUser() user: RequestUser) {
+    return this.registeredService.userQr(user.userId);
+  }
+
+  @Get("history")
+  @ApiOperation({ summary: "TWA operation history and archived subscriptions" })
+  history(@CurrentUser() user: RequestUser) {
+    return this.registeredService.history(user.userId);
+  }
+
+  @Get("subscriptions/active")
+  @ApiOperation({ summary: "Current user's active subscriptions" })
+  activeSubscriptions(@CurrentUser() user: RequestUser) {
+    return this.registeredService.listActiveSubscriptions(user.userId);
+  }
+
+  @Get("subscriptions/archive")
+  @ApiOperation({ summary: "Current user's expired and canceled subscriptions" })
+  archivedSubscriptions(@CurrentUser() user: RequestUser) {
+    return this.registeredService.listArchivedSubscriptions(user.userId);
+  }
+
+  @Post("subscriptions/:uuid/activate")
+  @ApiOperation({ summary: "Activate subscription for current user (payment stub flow)" })
+  activateSubscription(@CurrentUser() user: RequestUser, @Param("uuid") uuid: string) {
+    return this.registeredService.activateSubscription(user.userId, uuid);
   }
 }

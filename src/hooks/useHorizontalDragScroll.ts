@@ -19,6 +19,7 @@ export function useHorizontalDragScroll() {
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // Touch: native overflow scrolling
     if (e.pointerType === "touch") return;
+    if ((e.target as HTMLElement).closest("button, a")) return;
     const el = ref.current;
     if (!el) return;
     el.setPointerCapture(e.pointerId);
@@ -35,7 +36,7 @@ export function useHorizontalDragScroll() {
     const el = ref.current;
     if (!el) return;
     const dx = e.clientX - drag.current.startX;
-    if (Math.abs(dx) > 5) drag.current.moved = true;
+    if (Math.abs(dx) > 8) drag.current.moved = true;
     el.scrollLeft = drag.current.startScroll - dx;
   }, []);
 

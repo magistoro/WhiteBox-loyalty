@@ -8,7 +8,9 @@ import {
   AuditLevel,
   AuditResult,
   AuditWorkspace,
+  PromoCodeRewardType,
   Prisma,
+  ReferralInviteStatus,
   SubscriptionSpendPolicy,
   UserRole,
 } from "@prisma/client";
@@ -18,11 +20,14 @@ import { MaintenanceStateService } from "../maintenance/maintenance-state.servic
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { CreateCompanySubscriptionDto } from "./dto/create-company-subscription.dto";
+import { CreatePromoCodeDto } from "./dto/create-promo-code.dto";
 import { CreateAccountDto } from "./dto/create-account.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { UpdateCompanySubscriptionDto } from "./dto/update-company-subscription.dto";
 import { UpdateCompanyUserDto } from "./dto/update-company-user.dto";
+import { UpdateReferralCampaignDto } from "./dto/update-referral-campaign.dto";
+import { UpsertCompanyLocationDto } from "./dto/upsert-company-location.dto";
 import { UpsertCompanyProfileDto } from "./dto/upsert-company-profile.dto";
 
 @Injectable()
@@ -34,12 +39,18 @@ export class AdminService {
     "User",
     "Category",
     "Company",
+    "CompanyLocation",
     "Subscription",
     "CompanyCategory",
     "CompanyLevelRule",
     "UserFavoriteCategory",
+    "UserProfilePreference",
     "UserCompany",
     "UserSubscription",
+    "PromoCode",
+    "PromoCodeRedemption",
+    "ReferralCampaign",
+    "ReferralInvite",
     "RefreshToken",
     "OAuthAccount",
     "LoginEvent",
@@ -117,6 +128,24 @@ export class AdminService {
       "subscription",
       excludeId,
     );
+  }
+
+  private normalizePromoCode(code: string) {
+    return code.trim().toUpperCase().replace(/\s+/g, "");
+  }
+
+  private serializePromoCode(row: Prisma.PromoCodeGetPayload<{
+    include: {
+      subscription: { select: { uuid: true; slug: true; name: true } };
+      company: { select: { id: true; slug: true; name: true } };
+      redemptions: { select: { id: true } };
+    };
+  }>) {
+    const { redemptions, ...promoCode } = row;
+    return {
+      ...promoCode,
+      redemptionCount: redemptions.length,
+    };
   }
 
   private async requireCompanyUser(uuid: string) {
@@ -372,12 +401,18 @@ export class AdminService {
       users,
       categories,
       companies,
+      companyLocations,
       subscriptions,
       companyCategories,
       companyLevelRules,
       userFavoriteCategories,
+      userProfilePreferences,
       userCompanies,
       userSubscriptions,
+      promoCodes,
+      promoCodeRedemptions,
+      referralCampaigns,
+      referralInvites,
       refreshTokens,
       oAuthAccounts,
       loginEvents,
@@ -388,12 +423,18 @@ export class AdminService {
       this.prisma.user.findMany({ orderBy: { id: "asc" } }),
       this.prisma.category.findMany({ orderBy: { id: "asc" } }),
       this.prisma.company.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.companyLocation.findMany({ orderBy: { id: "asc" } }),
       this.prisma.subscription.findMany({ orderBy: { id: "asc" } }),
       this.prisma.companyCategory.findMany({ orderBy: { id: "asc" } }),
       this.prisma.companyLevelRule.findMany({ orderBy: { id: "asc" } }),
       this.prisma.userFavoriteCategory.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.userProfilePreference.findMany({ orderBy: { id: "asc" } }),
       this.prisma.userCompany.findMany({ orderBy: { id: "asc" } }),
       this.prisma.userSubscription.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.promoCode.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.promoCodeRedemption.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.referralCampaign.findMany({ orderBy: { id: "asc" } }),
+      this.prisma.referralInvite.findMany({ orderBy: { id: "asc" } }),
       this.prisma.refreshToken.findMany({ orderBy: { createdAt: "asc" } }),
       this.prisma.oAuthAccount.findMany({ orderBy: { createdAt: "asc" } }),
       this.prisma.loginEvent.findMany({ orderBy: { createdAt: "asc" } }),
@@ -406,12 +447,18 @@ export class AdminService {
       User: users,
       Category: categories,
       Company: companies,
+      CompanyLocation: companyLocations,
       Subscription: subscriptions,
       CompanyCategory: companyCategories,
       CompanyLevelRule: companyLevelRules,
       UserFavoriteCategory: userFavoriteCategories,
+      UserProfilePreference: userProfilePreferences,
       UserCompany: userCompanies,
       UserSubscription: userSubscriptions,
+      PromoCode: promoCodes,
+      PromoCodeRedemption: promoCodeRedemptions,
+      ReferralCampaign: referralCampaigns,
+      ReferralInvite: referralInvites,
       RefreshToken: refreshTokens,
       OAuthAccount: oAuthAccounts,
       LoginEvent: loginEvents,
@@ -505,6 +552,9 @@ export class AdminService {
       `SELECT setval(pg_get_serial_sequence('"Company"', 'id'), COALESCE((SELECT MAX(id) FROM "Company"), 1), true)`,
     );
     await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"CompanyLocation"', 'id'), COALESCE((SELECT MAX(id) FROM "CompanyLocation"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
       `SELECT setval(pg_get_serial_sequence('"Subscription"', 'id'), COALESCE((SELECT MAX(id) FROM "Subscription"), 1), true)`,
     );
     await this.prisma.$executeRawUnsafe(
@@ -517,10 +567,25 @@ export class AdminService {
       `SELECT setval(pg_get_serial_sequence('"UserFavoriteCategory"', 'id'), COALESCE((SELECT MAX(id) FROM "UserFavoriteCategory"), 1), true)`,
     );
     await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"UserProfilePreference"', 'id'), COALESCE((SELECT MAX(id) FROM "UserProfilePreference"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
       `SELECT setval(pg_get_serial_sequence('"UserCompany"', 'id'), COALESCE((SELECT MAX(id) FROM "UserCompany"), 1), true)`,
     );
     await this.prisma.$executeRawUnsafe(
       `SELECT setval(pg_get_serial_sequence('"UserSubscription"', 'id'), COALESCE((SELECT MAX(id) FROM "UserSubscription"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"PromoCode"', 'id'), COALESCE((SELECT MAX(id) FROM "PromoCode"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"PromoCodeRedemption"', 'id'), COALESCE((SELECT MAX(id) FROM "PromoCodeRedemption"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"ReferralCampaign"', 'id'), COALESCE((SELECT MAX(id) FROM "ReferralCampaign"), 1), true)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"ReferralInvite"', 'id'), COALESCE((SELECT MAX(id) FROM "ReferralInvite"), 1), true)`,
     );
     await this.prisma.$executeRawUnsafe(
       `SELECT setval(pg_get_serial_sequence('"LoyaltyTransaction"', 'id'), COALESCE((SELECT MAX(id) FROM "LoyaltyTransaction"), 1), true)`,
@@ -558,12 +623,18 @@ export class AdminService {
         }>;
         Category: Array<Record<string, unknown>>;
         Company: Array<Record<string, unknown>>;
+        CompanyLocation?: Array<Record<string, unknown>>;
         Subscription: Array<Record<string, unknown>>;
         CompanyCategory: Array<Record<string, unknown>>;
         CompanyLevelRule: Array<Record<string, unknown>>;
         UserFavoriteCategory: Array<Record<string, unknown>>;
+        UserProfilePreference?: Array<Record<string, unknown>>;
         UserCompany: Array<Record<string, unknown>>;
         UserSubscription: Array<Record<string, unknown>>;
+        PromoCode?: Array<Record<string, unknown>>;
+        PromoCodeRedemption?: Array<Record<string, unknown>>;
+        ReferralCampaign?: Array<Record<string, unknown>>;
+        ReferralInvite?: Array<Record<string, unknown>>;
         RefreshToken: Array<Record<string, unknown>>;
         OAuthAccount: Array<Record<string, unknown>>;
         LoginEvent: Array<Record<string, unknown>>;
@@ -598,9 +669,15 @@ export class AdminService {
       await tx.loyaltyTransaction.deleteMany();
       await tx.userSubscription.deleteMany();
       await tx.userCompany.deleteMany();
+      await tx.promoCodeRedemption.deleteMany();
+      await tx.referralInvite.deleteMany();
+      await tx.userProfilePreference.deleteMany();
       await tx.userFavoriteCategory.deleteMany();
+      await tx.referralCampaign.deleteMany();
       await tx.companyLevelRule.deleteMany();
       await tx.companyCategory.deleteMany();
+      await tx.companyLocation.deleteMany();
+      await tx.promoCode.deleteMany();
       await tx.subscription.deleteMany();
       await tx.company.deleteMany();
       await tx.category.deleteMany();
@@ -625,6 +702,9 @@ export class AdminService {
       }
       if (tables.Category.length) await tx.category.createMany({ data: tables.Category as never });
       if (tables.Company.length) await tx.company.createMany({ data: tables.Company as never });
+      if (tables.CompanyLocation?.length) {
+        await tx.companyLocation.createMany({ data: tables.CompanyLocation as never });
+      }
       if (tables.Subscription.length) {
         await tx.subscription.createMany({ data: tables.Subscription as never });
       }
@@ -637,10 +717,21 @@ export class AdminService {
       if (tables.UserFavoriteCategory.length) {
         await tx.userFavoriteCategory.createMany({ data: tables.UserFavoriteCategory as never });
       }
+      if (tables.UserProfilePreference?.length) {
+        await tx.userProfilePreference.createMany({ data: tables.UserProfilePreference as never });
+      }
       if (tables.UserCompany.length) await tx.userCompany.createMany({ data: tables.UserCompany as never });
       if (tables.UserSubscription.length) {
         await tx.userSubscription.createMany({ data: tables.UserSubscription as never });
       }
+      if (tables.PromoCode?.length) await tx.promoCode.createMany({ data: tables.PromoCode as never });
+      if (tables.PromoCodeRedemption?.length) {
+        await tx.promoCodeRedemption.createMany({ data: tables.PromoCodeRedemption as never });
+      }
+      if (tables.ReferralCampaign?.length) {
+        await tx.referralCampaign.createMany({ data: tables.ReferralCampaign as never });
+      }
+      if (tables.ReferralInvite?.length) await tx.referralInvite.createMany({ data: tables.ReferralInvite as never });
       if (tables.RefreshToken.length) {
         await tx.refreshToken.createMany({ data: tables.RefreshToken as never });
       }
@@ -1372,6 +1463,9 @@ export class AdminService {
                   category: { select: { id: true, name: true, slug: true, icon: true } },
                 },
               },
+              locations: {
+                orderBy: [{ isMain: "desc" }, { createdAt: "asc" }],
+              },
               subscriptionSpendPolicy: true,
               levelRules: {
                 orderBy: { sortOrder: "asc" },
@@ -1439,7 +1533,16 @@ export class AdminService {
   async getCompanyUserByUuid(uuid: string) {
     const user = await this.prisma.user.findUnique({
       where: { uuid },
-      include: {
+      select: {
+        id: true,
+        uuid: true,
+        name: true,
+        email: true,
+        role: true,
+        accountStatus: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
         managedCompany: {
           include: {
             category: true,
@@ -1450,6 +1553,9 @@ export class AdminService {
             },
             levelRules: {
               orderBy: { sortOrder: "asc" },
+            },
+            locations: {
+              orderBy: [{ isMain: "desc" }, { createdAt: "asc" }],
             },
             subscriptions: {
               orderBy: { createdAt: "desc" },
@@ -1631,6 +1737,221 @@ export class AdminService {
         category: { select: { id: true, name: true, slug: true } },
       },
     });
+  }
+
+  private async geocodeCompanyAddress(address: string) {
+    const apiKey =
+      this.config.get<string>("YANDEX_GEOCODER_API_KEY") ??
+      this.config.get<string>("NEXT_PUBLIC_YANDEX_MAPS_API_KEY");
+    if (!apiKey) {
+      throw new BadRequestException("YANDEX_GEOCODER_API_KEY is not configured.");
+    }
+
+    const params = new URLSearchParams({
+      apikey: apiKey,
+      geocode: address,
+      format: "json",
+      lang: "ru_RU",
+      results: "1",
+    });
+    const referer = this.config.get<string>("FRONTEND_ORIGIN") ?? "http://localhost:3000";
+    const response = await fetch(`https://geocode-maps.yandex.ru/v1/?${params.toString()}`, {
+      headers: { Referer: referer },
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new BadRequestException(`Yandex geocoder failed (${response.status}): ${body.slice(0, 240)}`);
+    }
+
+    const payload = (await response.json()) as {
+      response?: {
+        GeoObjectCollection?: {
+          featureMember?: Array<{
+            GeoObject?: {
+              name?: string;
+              description?: string;
+              Point?: { pos?: string };
+              metaDataProperty?: {
+                GeocoderMetaData?: {
+                  precision?: string;
+                  text?: string;
+                  Address?: { formatted?: string };
+                };
+              };
+            };
+          }>;
+        };
+      };
+    };
+    const geoObject = payload.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
+    const pos = geoObject?.Point?.pos;
+    if (!pos) {
+      throw new BadRequestException("Yandex geocoder did not find coordinates for this address.");
+    }
+
+    const [longitudeRaw, latitudeRaw] = pos.split(" ");
+    const longitude = Number(longitudeRaw);
+    const latitude = Number(latitudeRaw);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      throw new BadRequestException("Yandex geocoder returned invalid coordinates.");
+    }
+
+    const meta = geoObject.metaDataProperty?.GeocoderMetaData;
+    return {
+      latitude,
+      longitude,
+      precision: meta?.precision ?? null,
+      formattedAddress: meta?.Address?.formatted ?? meta?.text ?? address,
+      raw: geoObject as Prisma.InputJsonValue,
+    };
+  }
+
+  private async ensureSingleMainLocation(companyId: number, locationId: number) {
+    await this.prisma.companyLocation.updateMany({
+      where: { companyId, id: { not: locationId } },
+      data: { isMain: false },
+    });
+  }
+
+  private normalizeLocationAddress(address: string) {
+    return address
+      .trim()
+      .toLowerCase()
+      .replace(/[.,]/g, "")
+      .replace(/\s+/g, " ");
+  }
+
+  private normalizeWorkingDays(days?: number[]) {
+    const uniqueDays = [...new Set((days?.length ? days : [0, 1, 2, 3, 4, 5, 6]).map(Number))]
+      .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+      .sort((a, b) => a - b);
+    if (uniqueDays.length === 0) {
+      throw new BadRequestException("Working days must include at least one day.");
+    }
+    return uniqueDays;
+  }
+
+  private assertValidLocationTime(value: string, label: string) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+      throw new BadRequestException(`${label} must be in HH:mm format.`);
+    }
+  }
+
+  private async assertUniqueCompanyLocationAddress(companyId: number, address: string, excludeLocationId?: number) {
+    const normalizedAddress = this.normalizeLocationAddress(address);
+    const locations = await this.prisma.companyLocation.findMany({
+      where: { companyId, ...(excludeLocationId ? { id: { not: excludeLocationId } } : {}) },
+      select: { address: true },
+    });
+    const exists = locations.some((location) => this.normalizeLocationAddress(location.address) === normalizedAddress);
+    if (exists) {
+      throw new ConflictException("This company already has this address.");
+    }
+  }
+
+  async createCompanyLocation(companyUserUuid: string, dto: UpsertCompanyLocationDto) {
+    const user = await this.requireCompanyUser(companyUserUuid);
+    if (!user.managedCompany) {
+      throw new BadRequestException("Company profile must exist before adding locations.");
+    }
+    const address = dto.address.trim();
+    const geocoded = await this.geocodeCompanyAddress(address);
+    await this.assertUniqueCompanyLocationAddress(user.managedCompany.id, geocoded.formattedAddress);
+    const openTime = dto.openTime ?? "09:00";
+    const closeTime = dto.closeTime ?? "21:00";
+    this.assertValidLocationTime(openTime, "Open time");
+    this.assertValidLocationTime(closeTime, "Close time");
+    const shouldBeMain =
+      dto.isMain ??
+      ((await this.prisma.companyLocation.count({ where: { companyId: user.managedCompany.id } })) === 0);
+    const location = await this.prisma.companyLocation.create({
+      data: {
+        companyId: user.managedCompany.id,
+        title: dto.title?.trim() || null,
+        address: geocoded.formattedAddress,
+        city: dto.city?.trim() || null,
+        latitude: new Prisma.Decimal(geocoded.latitude),
+        longitude: new Prisma.Decimal(geocoded.longitude),
+        precision: geocoded.precision,
+        geocoderResponse: geocoded.raw,
+        openTime,
+        closeTime,
+        workingDays: this.normalizeWorkingDays(dto.workingDays),
+        isMain: shouldBeMain,
+        isActive: dto.isActive ?? true,
+      },
+    });
+    if (location.isMain) await this.ensureSingleMainLocation(user.managedCompany.id, location.id);
+    return location;
+  }
+
+  async updateCompanyLocation(
+    companyUserUuid: string,
+    locationUuid: string,
+    dto: UpsertCompanyLocationDto,
+  ) {
+    const user = await this.requireCompanyUser(companyUserUuid);
+    if (!user.managedCompany) {
+      throw new BadRequestException("Company profile must exist before editing locations.");
+    }
+    const existing = await this.prisma.companyLocation.findUnique({ where: { uuid: locationUuid } });
+    if (!existing || existing.companyId !== user.managedCompany.id) {
+      throw new NotFoundException("Company location not found.");
+    }
+
+    const nextAddress = dto.address.trim();
+    const geocoded = nextAddress !== existing.address ? await this.geocodeCompanyAddress(nextAddress) : null;
+    const nextFormattedAddress = geocoded?.formattedAddress ?? nextAddress;
+    await this.assertUniqueCompanyLocationAddress(user.managedCompany.id, nextFormattedAddress, existing.id);
+    const openTime = dto.openTime ?? existing.openTime;
+    const closeTime = dto.closeTime ?? existing.closeTime;
+    this.assertValidLocationTime(openTime, "Open time");
+    this.assertValidLocationTime(closeTime, "Close time");
+    const location = await this.prisma.companyLocation.update({
+      where: { uuid: locationUuid },
+      data: {
+        title: dto.title?.trim() || null,
+        address: nextFormattedAddress,
+        city: dto.city?.trim() || null,
+        ...(geocoded
+          ? {
+              latitude: new Prisma.Decimal(geocoded.latitude),
+              longitude: new Prisma.Decimal(geocoded.longitude),
+              precision: geocoded.precision,
+              geocoderResponse: geocoded.raw,
+            }
+          : {}),
+        openTime,
+        closeTime,
+        workingDays: this.normalizeWorkingDays(dto.workingDays ?? existing.workingDays),
+        isMain: dto.isMain ?? existing.isMain,
+        isActive: dto.isActive ?? existing.isActive,
+      },
+    });
+    if (location.isMain) await this.ensureSingleMainLocation(user.managedCompany.id, location.id);
+    return location;
+  }
+
+  async deleteCompanyLocation(companyUserUuid: string, locationUuid: string) {
+    const user = await this.requireCompanyUser(companyUserUuid);
+    if (!user.managedCompany) {
+      throw new BadRequestException("Company profile must exist before deleting locations.");
+    }
+    const existing = await this.prisma.companyLocation.findUnique({ where: { uuid: locationUuid } });
+    if (!existing || existing.companyId !== user.managedCompany.id) {
+      throw new NotFoundException("Company location not found.");
+    }
+    await this.prisma.companyLocation.delete({ where: { uuid: locationUuid } });
+    if (existing.isMain) {
+      const nextMain = await this.prisma.companyLocation.findFirst({
+        where: { companyId: user.managedCompany.id, isActive: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (nextMain) {
+        await this.prisma.companyLocation.update({ where: { id: nextMain.id }, data: { isMain: true } });
+      }
+    }
+    return { success: true as const };
   }
 
   async listCompanyClients(
@@ -1901,6 +2222,207 @@ export class AdminService {
     }
     await this.prisma.subscription.delete({ where: { uuid: subscriptionUuid } });
     return { success: true as const };
+  }
+
+  async listPromoCodes() {
+    const rows = await this.prisma.promoCode.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        company: { select: { id: true, slug: true, name: true } },
+        subscription: { select: { uuid: true, slug: true, name: true } },
+        redemptions: { select: { id: true } },
+      },
+    });
+    return rows.map((row) => this.serializePromoCode(row));
+  }
+
+  async createPromoCode(dto: CreatePromoCodeDto) {
+    const code = this.normalizePromoCode(dto.code);
+    if (!code) {
+      throw new BadRequestException("Promo code is required.");
+    }
+
+    const existing = await this.prisma.promoCode.findUnique({ where: { code } });
+    if (existing) {
+      throw new ConflictException("Promo code already exists.");
+    }
+
+    const rewardType = dto.rewardType;
+    const points = Math.max(0, Number(dto.points ?? 0));
+    let companyId: number | null = null;
+    let subscriptionId: number | null = null;
+
+    if (rewardType === PromoCodeRewardType.POINTS && points <= 0) {
+      throw new BadRequestException("Point promo code must grant at least 1 point.");
+    }
+    if (rewardType === PromoCodeRewardType.POINTS) {
+      if (!dto.companyUuid) {
+        throw new BadRequestException("Company is required for point promo codes.");
+      }
+      const companyUser = await this.requireCompanyUser(dto.companyUuid);
+      if (!companyUser.managedCompany) {
+        throw new BadRequestException("Selected company user does not have a company profile.");
+      }
+      companyId = companyUser.managedCompany.id;
+    }
+
+    if (rewardType === PromoCodeRewardType.SUBSCRIPTION) {
+      if (!dto.subscriptionUuid) {
+        throw new BadRequestException("Subscription UUID is required for subscription promo codes.");
+      }
+      const subscription = await this.prisma.subscription.findUnique({
+        where: { uuid: dto.subscriptionUuid },
+        select: { id: true },
+      });
+      if (!subscription) {
+        throw new NotFoundException("Subscription not found.");
+      }
+      subscriptionId = subscription.id;
+    }
+
+    const row = await this.prisma.promoCode.create({
+      data: {
+        code,
+        title: dto.title.trim(),
+        description: dto.description?.trim() || null,
+        rewardType,
+        points: rewardType === PromoCodeRewardType.POINTS ? points : 0,
+        companyId,
+        subscriptionId,
+        maxRedemptions: dto.maxRedemptions ?? null,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        isActive: dto.isActive ?? true,
+      },
+      include: {
+        company: { select: { id: true, slug: true, name: true } },
+        subscription: { select: { uuid: true, slug: true, name: true } },
+        redemptions: { select: { id: true } },
+      },
+    });
+
+    return this.serializePromoCode(row);
+  }
+
+  async updatePromoCode(id: number, dto: Partial<CreatePromoCodeDto>) {
+    const existing = await this.prisma.promoCode.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Promo code not found.");
+
+    const nextRewardType = dto.rewardType ?? existing.rewardType;
+    const nextPoints = dto.points === undefined ? existing.points : Math.max(0, Number(dto.points));
+    let companyId = existing.companyId;
+    let subscriptionId = existing.subscriptionId;
+
+    if (nextRewardType === PromoCodeRewardType.POINTS && nextPoints <= 0) {
+      throw new BadRequestException("Point promo code must grant at least 1 point.");
+    }
+    if (nextRewardType === PromoCodeRewardType.POINTS) {
+      if (dto.companyUuid !== undefined) {
+        const companyUser = await this.requireCompanyUser(dto.companyUuid);
+        if (!companyUser.managedCompany) {
+          throw new BadRequestException("Selected company user does not have a company profile.");
+        }
+        companyId = companyUser.managedCompany.id;
+      }
+      if (!companyId) {
+        throw new BadRequestException("Point promo code must be linked to a company.");
+      }
+    } else {
+      companyId = null;
+    }
+
+    if (nextRewardType === PromoCodeRewardType.SUBSCRIPTION) {
+      if (dto.subscriptionUuid !== undefined) {
+        const subscription = await this.prisma.subscription.findUnique({
+          where: { uuid: dto.subscriptionUuid },
+          select: { id: true },
+        });
+        if (!subscription) throw new NotFoundException("Subscription not found.");
+        subscriptionId = subscription.id;
+      }
+      if (!subscriptionId) {
+        throw new BadRequestException("Subscription promo code must be linked to a subscription.");
+      }
+    } else {
+      subscriptionId = null;
+    }
+
+    const row = await this.prisma.promoCode.update({
+      where: { id },
+      data: {
+        ...(dto.code !== undefined ? { code: this.normalizePromoCode(dto.code) } : {}),
+        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+        ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
+        ...(dto.rewardType !== undefined ? { rewardType: dto.rewardType } : {}),
+        points: nextRewardType === PromoCodeRewardType.POINTS ? nextPoints : 0,
+        companyId,
+        subscriptionId,
+        ...(dto.maxRedemptions !== undefined ? { maxRedemptions: dto.maxRedemptions ?? null } : {}),
+        ...(dto.expiresAt !== undefined ? { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null } : {}),
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+      },
+      include: {
+        company: { select: { id: true, slug: true, name: true } },
+        subscription: { select: { uuid: true, slug: true, name: true } },
+        redemptions: { select: { id: true } },
+      },
+    });
+
+    return this.serializePromoCode(row);
+  }
+
+  private async ensureReferralCampaign() {
+    const existing = await this.prisma.referralCampaign.findFirst({
+      orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+    });
+    if (existing) return existing;
+    return this.prisma.referralCampaign.create({ data: {} });
+  }
+
+  async getReferralCampaignAdmin() {
+    const [campaign, createdInvites, redeemedInvites, rewardedInvites] = await Promise.all([
+      this.prisma.referralCampaign.findFirst({
+        orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+        include: { bonusCompany: { select: { id: true, slug: true, name: true } } },
+      }).then((row) => row ?? this.prisma.referralCampaign.create({ data: {}, include: { bonusCompany: { select: { id: true, slug: true, name: true } } } })),
+      this.prisma.referralInvite.count({ where: { status: ReferralInviteStatus.CREATED } }),
+      this.prisma.referralInvite.count({ where: { status: ReferralInviteStatus.REDEEMED } }),
+      this.prisma.referralInvite.count({ where: { status: ReferralInviteStatus.REWARDED } }),
+    ]);
+    return {
+      ...campaign,
+      stats: {
+        createdInvites,
+        redeemedInvites,
+        rewardedInvites,
+      },
+    };
+  }
+
+  async updateReferralCampaign(dto: UpdateReferralCampaignDto) {
+    const existing = await this.ensureReferralCampaign();
+    let bonusCompanyId = existing.bonusCompanyId;
+    if (dto.bonusCompanyUuid !== undefined) {
+      if (!dto.bonusCompanyUuid) {
+        bonusCompanyId = null;
+      } else {
+        const companyUser = await this.requireCompanyUser(dto.bonusCompanyUuid);
+        if (!companyUser.managedCompany) {
+          throw new BadRequestException("Selected company user does not have a company profile.");
+        }
+        bonusCompanyId = companyUser.managedCompany.id;
+      }
+    }
+    const campaign = await this.prisma.referralCampaign.update({
+      where: { id: existing.id },
+      data: {
+        ...(dto.title !== undefined ? { title: dto.title.trim() || existing.title } : {}),
+        ...(dto.inviterBonusPoints !== undefined ? { inviterBonusPoints: Math.max(0, Number(dto.inviterBonusPoints)) } : {}),
+        ...(dto.invitedBonusPoints !== undefined ? { invitedBonusPoints: Math.max(0, Number(dto.invitedBonusPoints)) } : {}),
+        bonusCompanyId,
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+      },
+    });
+    return this.getReferralCampaignAdmin().then((result) => ({ ...result, ...campaign }));
   }
 
   async subscriptionStats() {

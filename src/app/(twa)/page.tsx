@@ -3,24 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import {
-  categories as fallbackCategories,
-  getTotalBalance,
-  getCompaniesBySearch,
-  getSubscriptionById,
-  getCategoryById,
-} from "@/lib/mockData";
-import { getActiveSubscriptions } from "@/services/subscriptions/subscription.service";
 import { computeSubscriptionProgress } from "@/services/subscriptions/subscription.progress";
 import { SubscriptionProgressBar } from "@/components/subscriptions/SubscriptionProgressBar";
 import type { ApiCategory } from "@/lib/api/categories-client";
-import { getFavoriteCategorySlugs, getRegisteredCategories } from "@/lib/api/categories-client";
+import { getFavoriteCategorySlugs } from "@/lib/api/categories-client";
+import { getTwaDashboard, type TwaCompany, type TwaDashboard, type TwaUserSubscription } from "@/lib/api/twa-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Wallet, ChevronRight, Search, Coffee } from "lucide-react";
+import { Wallet, ChevronRight, Search, CircleDollarSign, Store } from "lucide-react";
 import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
@@ -40,31 +33,49 @@ const item = {
 
 const HOME_LOYALTY_CARDS_PREVIEW_LIMIT = 4;
 
+function getRenewPeriodDays(subscription: TwaUserSubscription) {
+  if (!subscription.expiresAt) return 30;
+  const activated = new Date(subscription.activatedAt).getTime();
+  const expires = new Date(subscription.expiresAt).getTime();
+  const days = Math.ceil((expires - activated) / (24 * 60 * 60 * 1000));
+  return Math.max(1, days);
+}
+
+function companyCategories(company: TwaCompany) {
+  const bySlug = new Map([company.category, ...company.categories].filter(Boolean).map((category) => [category.slug, category]));
+  return [...bySlug.values()];
+}
+
 export default function HomePage() {
-  const totalBalance = getTotalBalance();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([]);
+  const [dashboard, setDashboard] = useState<TwaDashboard | null>(null);
+  const totalBalance = dashboard?.wallet.totalBalance ?? 0;
 
   useEffect(() => {
     void (async () => {
-      const [apiCategories, favorites] = await Promise.all([
-        getRegisteredCategories(),
+      const [favorites, dashboardData] = await Promise.all([
         getFavoriteCategorySlugs(),
+        getTwaDashboard(),
       ]);
-      if (apiCategories.length > 0) {
-        setCategories(apiCategories);
-      }
       setFavoriteSlugs(favorites);
+      setDashboard(dashboardData);
     })();
   }, []);
 
   const displayCategories = useMemo(() => {
-    const source = categories.length > 0 ? categories : fallbackCategories;
-    if (favoriteSlugs.length === 0) return source;
+    const source = new Map<string, ApiCategory>();
+    for (const company of dashboard?.wallet.companies ?? []) {
+      if (company.points.totalEarnedPoints <= 0) continue;
+      for (const category of companyCategories(company)) {
+        source.set(category.slug, category);
+      }
+    }
+    const categories = [...source.values()];
+    if (favoriteSlugs.length === 0) return categories;
     const order = new Map(favoriteSlugs.map((slug, idx) => [slug, idx]));
-    return [...source].sort((a, b) => {
+    return categories.sort((a, b) => {
       const ai = order.get(a.slug);
       const bi = order.get(b.slug);
       if (ai === undefined && bi === undefined) return a.name.localeCompare(b.name);
@@ -72,25 +83,32 @@ export default function HomePage() {
       if (bi === undefined) return -1;
       return ai - bi;
     });
-  }, [categories, favoriteSlugs]);
+  }, [dashboard?.wallet.companies, favoriteSlugs]);
 
-  const filteredCompanies = useMemo(
-    () => getCompaniesBySearch(searchQuery, selectedCategory),
-    [searchQuery, selectedCategory]
-  );
+  const filteredCompanies = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const loyaltyCompanies = dashboard?.wallet.companies.filter((company) => company.points.totalEarnedPoints > 0) ?? [];
+
+    return loyaltyCompanies.filter((company) => {
+      const categories = companyCategories(company);
+      const matchesSearch =
+        !query ||
+        company.name.toLowerCase().includes(query) ||
+        (company.description ?? "").toLowerCase().includes(query) ||
+        categories.some((category) => category.name.toLowerCase().includes(query));
+
+      if (!matchesSearch) return false;
+      if (selectedCategory && !categories.some((category) => category.slug === selectedCategory)) return false;
+      return true;
+    });
+  }, [dashboard?.wallet.companies, searchQuery, selectedCategory]);
 
   const displayedCompanies = useMemo(
     () => filteredCompanies.slice(0, HOME_LOYALTY_CARDS_PREVIEW_LIMIT),
     [filteredCompanies]
   );
 
-  const activeSubsWithDetails = useMemo(
-    () =>
-      getActiveSubscriptions()
-        .map((a) => ({ ...a, sub: getSubscriptionById(a.subscriptionId) }))
-        .filter((a): a is typeof a & { sub: NonNullable<typeof a.sub> } => !!a.sub),
-    []
-  );
+  const activeSubscriptions = dashboard?.activeSubscriptions ?? [];
 
   return (
     <motion.div
@@ -210,24 +228,33 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex min-w-0 gap-2 overflow-x-auto overflow-y-hidden pb-2 touch-pan-x hide-scrollbar">
-          {activeSubsWithDetails.slice(0, 3).map(({ sub, subscriptionId, expiresAt, renewPeriodDays }) =>
-            sub ? (
-              <Link key={subscriptionId} href={`/marketplace/${subscriptionId}`}>
+          {activeSubscriptions.slice(0, 3).map((activeSubscription) => {
+            const plan = activeSubscription.subscription;
+            const category = plan.category;
+            return (
+              <Link key={activeSubscription.id} href={`/marketplace/${plan.uuid}`}>
                 <Card className="glass min-w-[160px] border-white/10 transition-all active:scale-[0.98] hover:border-white/20">
                   <CardContent className="p-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 mb-2">
-                      <Coffee className="h-4 w-4 text-primary" />
+                      {category ? (
+                        <CategoryIcon iconName={category.icon ?? "Circle"} className="h-4 w-4 text-primary" />
+                      ) : (
+                        <CircleDollarSign className="h-4 w-4 text-primary" />
+                      )}
                     </div>
-                    <p className="text-sm font-semibold truncate">{sub.name}</p>
+                    <p className="text-sm font-semibold truncate">{plan.name}</p>
                     <SubscriptionProgressBar
-                      progress={computeSubscriptionProgress({ expiresAt, renewPeriodDays })}
+                      progress={computeSubscriptionProgress({
+                        expiresAt: activeSubscription.expiresAt ?? activeSubscription.updatedAt,
+                        renewPeriodDays: getRenewPeriodDays(activeSubscription),
+                      })}
                       className="mt-2"
                     />
                   </CardContent>
                 </Card>
               </Link>
-            ) : null
-          )}
+            );
+          })}
         </div>
       </motion.section>
 
@@ -240,7 +267,7 @@ export default function HomePage() {
           >
             Loyalty Cards
           </motion.h2>
-          <Link href="/companies">
+          <Link href="/loyalty-cards">
             <Button variant="ghost" size="sm" className="text-primary text-xs h-8">
               View All
               <ChevronRight className="h-4 w-4 ml-0.5" />
@@ -254,11 +281,8 @@ export default function HomePage() {
           className="grid gap-3 sm:grid-cols-2"
         >
           {displayedCompanies.map((company) => {
-            const progress =
-              (company.pointsPerReward - company.pointsToNextReward) /
-              company.pointsPerReward;
-            const progressPercent = Math.min(100, Math.max(0, progress * 100));
-            const category = getCategoryById(company.categoryId);
+            const progressPercent = company.level.progressPercent;
+            const categories = companyCategories(company).slice(0, 2);
 
             return (
               <motion.div key={company.id} variants={item}>
@@ -273,21 +297,24 @@ export default function HomePage() {
                         <CardTitle className="text-base font-semibold truncate">
                           {company.name}
                         </CardTitle>
-                        {category && (
-                          <Badge
-                            variant="secondary"
-                            className="mt-1 inline-flex items-center gap-1 text-[10px] font-normal"
-                          >
-                            <CategoryIcon iconName={category.icon ?? "Circle"} className="h-3 w-3" />
-                            {category.name}
-                          </Badge>
-                        )}
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {categories.map((category) => (
+                            <Badge
+                              key={category.slug}
+                              variant="secondary"
+                              className="inline-flex items-center gap-1 text-[10px] font-normal"
+                            >
+                              <CategoryIcon iconName={category.icon ?? "Circle"} className="h-3 w-3" />
+                              {category.name}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
                       <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
                     </CardHeader>
                     <CardContent className="px-4 pb-4 pt-0">
                       <p className="mb-2 text-xl font-bold tabular-nums text-primary">
-                        {company.balance}
+                        {company.points.balance}
                         <span className="ml-1 text-sm font-normal text-muted-foreground">
                           pts
                         </span>
@@ -295,7 +322,9 @@ export default function HomePage() {
                       <div className="space-y-1">
                         <div className="flex justify-between text-xs text-muted-foreground">
                           <span>Next reward</span>
-                          <span>{company.pointsToNextReward} pts left</span>
+                          <span>
+                            {company.level.next ? `${company.level.next.pointsToNext} pts left` : "Top level"}
+                          </span>
                         </div>
                         <Progress value={progressPercent} className="h-1.5" />
                       </div>
@@ -313,7 +342,7 @@ export default function HomePage() {
         )}
         {filteredCompanies.length > 0 && filteredCompanies.length > HOME_LOYALTY_CARDS_PREVIEW_LIMIT && (
           <div className="mt-3 text-center">
-            <Link href="/companies">
+            <Link href="/loyalty-cards">
               <Button variant="outline" size="sm" className="glass border-white/10">
                 View all {filteredCompanies.length} partners
               </Button>
@@ -321,6 +350,30 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      <motion.section
+        initial={{ y: 8, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.16 }}
+        className="mt-6"
+      >
+        <Link href="/companies">
+          <Card className="glass border-white/10 bg-white/[0.02] transition-all active:scale-[0.98] hover:border-white/20">
+            <CardContent className="flex items-center justify-between gap-3 p-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/20 text-muted-foreground">
+                  <Store className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Explore all partners</p>
+                  <p className="text-xs text-muted-foreground">Find new places to earn rewards</p>
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      </motion.section>
     </motion.div>
   );
 }
