@@ -39,15 +39,13 @@ Create a Railway service from the same GitHub repository.
 Build command:
 
 ```bash
-npm ci
-npm run db:generate
-npm run api:build
+npm run build
 ```
 
 Start command:
 
 ```bash
-npm run api:start
+npm run start
 ```
 
 Required variables:
@@ -88,8 +86,6 @@ Create a second Railway service from the same GitHub repository.
 Build command:
 
 ```bash
-npm ci
-npm run db:generate
 npm run build
 ```
 
@@ -98,6 +94,11 @@ Start command:
 ```bash
 npm run start
 ```
+
+The root `build` and `start` scripts are Railway-aware. They inspect `RAILWAY_SERVICE_NAME`:
+
+- service names containing `api` build/start the NestJS API;
+- other service names build/start the Next.js web app.
 
 Required variables:
 
