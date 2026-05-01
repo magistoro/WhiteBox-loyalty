@@ -29,5 +29,6 @@ if (isApiService) {
   await npmRun(["run", "api:build"]);
 } else {
   console.log(serviceName ? `Building web service "${serviceName}".` : "Building local Next.js app.");
+  await npmRun(["run", "db:generate"]);
   await npmRun(["run", "build:web"]);
 }
