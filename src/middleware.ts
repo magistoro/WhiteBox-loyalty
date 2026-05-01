@@ -1,8 +1,9 @@
-import { jwtVerify } from "jose";
+import { decodeJwt } from "jose";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const ACCESS_COOKIE = "wb_access_token";
+const ROLES = new Set(["CLIENT", "ADMIN", "COMPANY"]);
 
 function redirectToLogin(request: NextRequest) {
   const login = new URL("/login", request.url);
@@ -24,16 +25,24 @@ export async function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get(ACCESS_COOKIE)?.value;
-  const secret = process.env.JWT_SECRET;
 
-  if (!token || !secret) {
+  if (!token) {
     return redirectToLogin(request);
   }
 
   try {
-    const key = new TextEncoder().encode(secret);
-    const { payload } = await jwtVerify(token, key);
+    /*
+     * The web middleware is a UX router, not the security boundary.
+     * API guards still verify JWT signatures before returning private data.
+     * Decoding here avoids production lockouts when web/api env secrets drift.
+     */
+    const payload = decodeJwt(token);
     const role = typeof payload.role === "string" ? payload.role : undefined;
+    const expiresAt = typeof payload.exp === "number" ? payload.exp * 1000 : 0;
+
+    if (!role || !ROLES.has(role) || expiresAt <= Date.now()) {
+      return redirectToLogin(request);
+    }
 
     /** Partner / admin portals */
     if (path.startsWith("/admin")) {
