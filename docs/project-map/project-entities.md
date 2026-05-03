@@ -1,28 +1,41 @@
 # WhiteBox - Core Entities and Types
 
-## Main database entities (Prisma)
+## Prisma models
+
+Current source of truth: `prisma/schema.prisma`.
+
+Identity and access:
 
 - `User`
+- `RefreshToken`
+- `OAuthAccount`
+- `LoginEvent`
+- `EmailChangeRequest`
+- `AuditEvent`
+
+Catalog and partners:
+
 - `Category`
 - `Company`
-- `Subscription`
+- `CompanyCategory`
 - `CompanyLocation`
+- `CompanyLevelRule`
+- `Subscription`
+
+Client state and ledger:
+
 - `UserFavoriteCategory`
 - `UserProfilePreference`
 - `UserCompany`
 - `UserSubscription`
+- `LoyaltyTransaction`
+
+Growth:
+
 - `PromoCode`
 - `PromoCodeRedemption`
 - `ReferralCampaign`
 - `ReferralInvite`
-- `RefreshToken`
-- `OAuthAccount`
-- `EmailChangeRequest`
-- `LoginEvent`
-- `LoyaltyTransaction`
-- `AuditEvent`
-- `CompanyCategory`
-- `CompanyLevelRule`
 
 ## Enum highlights
 
@@ -39,100 +52,43 @@
 - `PromoCodeRewardType`: `POINTS | SUBSCRIPTION`
 - `ReferralInviteStatus`: `CREATED | REDEEMED | REWARDED`
 
-## Core relationships
+## Relationship map
 
-- `Category 1:N Company`
-- `Category 1:N Subscription` (optional link)
-- `Company 1:N Subscription` (optional link)
-- `User 1:N UserFavoriteCategory`
-- `User 1:1 UserProfilePreference`
-- `User 1:N UserCompany`
-- `User 1:N UserSubscription`
-- `User 1:N PromoCodeRedemption`
-- `User 1:N ReferralInvite` as inviter
-- `User 1:1 ReferralInvite` as invited user
-- `User 1:N RefreshToken`
-- `User 1:N OAuthAccount`
-- `User 1:N LoginEvent`
-- `User 1:N LoyaltyTransaction`
-- `Company 1:N LoyaltyTransaction`
-- `User 1:N EmailChangeRequest`
-- `User 1:1 Company` via owner relation (`managedCompany`)
-- `Company N:M Category` via `CompanyCategory`
-- `Company 1:N CompanyLocation`
-- `Company 1:N CompanyLevelRule`
-- `Subscription 1:N PromoCode` for subscription activation promos
-- `PromoCode 1:N PromoCodeRedemption`
-- `User 1:N AuditEvent` as actor
-- `User 1:N AuditEvent` as target
+- `User 1:N RefreshToken`, `OAuthAccount`, `LoginEvent`, `LoyaltyTransaction`, `PromoCodeRedemption`.
+- `User 1:1 UserProfilePreference`.
+- `User N:M Category` through `UserFavoriteCategory`.
+- `User N:M Company` through `UserCompany`.
+- `User N:M Subscription` through `UserSubscription`.
+- `User 1:1 Company` through `Company.ownerUserId`.
+- `User 1:N ReferralInvite` as inviter; `User 1:1 ReferralInvite` as invited user.
+- `User 1:N AuditEvent` as actor and as target.
+- `Category 1:N Company` as primary category.
+- `Company N:M Category` through `CompanyCategory`.
+- `Company 1:N CompanyLocation`, `CompanyLevelRule`, `Subscription`, `LoyaltyTransaction`.
+- `Company 1:N PromoCode` for points rewards.
+- `Company 1:N ReferralCampaign` for referral bonus company.
+- `Subscription 1:N PromoCode` for activation promos.
+- `PromoCode 1:N PromoCodeRedemption`.
 
-## Growth and onboarding model
+## Company-specific points
 
-- `UserProfilePreference` stores first-run onboarding completion/skip timestamps, geolocation prompt timestamp, profile visibility, marketing opt-in, and whether activity stats can be shown.
-- `PromoCode` supports two reward modes: bonus points (`POINTS`) and subscription activation (`SUBSCRIPTION`).
-- `PromoCodeRedemption` prevents a user from redeeming the same code more than once.
-- `ReferralCampaign` stores mutable admin-controlled invite-a-friend terms: campaign title, inviter points, invited points, and active flag.
-- `ReferralInvite` stores a stable user referral code and redemption/reward status.
+Points are not universal. They belong to a company:
+
+- `UserCompany.balance` is the current company balance.
+- `LoyaltyTransaction.companyId` records the company for every earn/spend event.
+- Promo/referral point rewards must resolve to a company and then update the same ledger/balance system.
 
 ## Location model
 
-`CompanyLocation` represents a real company branch:
+`CompanyLocation` stores real branches:
 
-- belongs to one `Company`
-- stores normalized/geocoded `address`, optional `city`, `latitude`, `longitude`, `precision`, and raw geocoder metadata
-- stores `openTime`, `closeTime`, and `workingDays` for TWA open-now filters and selected-point cards
-- uses `isMain` for primary branch ordering and `isActive` for hiding closed/inactive branches from the registered API
-- powers TWA map markers, clustering, wallet address blocks, route links, and admin company location management
+- `address`, `city`, coordinates and geocoder precision/metadata.
+- `openTime`, `closeTime`, `workingDays` for open-now filtering.
+- `isMain` for primary branch display.
+- `isActive` for hiding branches from the TWA map and partner cards.
 
-## Backup payload entities
+Duplicate addresses are rejected server-side per company after normalization/geocoder resolution.
 
-DB snapshot backup (`/api/admin/backups`) serializes all operational tables:
+## Backup payload
 
-- `User`
-- `Category`
-- `Company`
-- `CompanyLocation`
-- `Subscription`
-- `CompanyCategory`
-- `CompanyLevelRule`
-- `UserFavoriteCategory`
-- `UserProfilePreference`
-- `UserCompany`
-- `UserSubscription`
-- `PromoCode`
-- `PromoCodeRedemption`
-- `ReferralCampaign`
-- `ReferralInvite`
-- `RefreshToken`
-- `OAuthAccount`
-- `LoginEvent`
-- `EmailChangeRequest`
-- `LoyaltyTransaction`
-- `AuditEvent`
-
-## Admin profile payload shape
-
-`GET /api/admin/users/:uuid` returns a rich object:
-
-- base user fields (`id`, `uuid`, `email`, `role`, `accountStatus`, timestamps)
-- `hasPassword` (derived flag)
-- `favoriteCategories[]`
-- `companyLinks[]`
-- `subscriptions[]`
-- `refreshTokens[]` (latest 20)
-- `oauthAccounts[]`
-- `loginEvents[]` (latest 25)
-- `loyaltyTransactions[]` (latest 50)
-- `loginRisk` summary object
-
-## Frontend admin types
-
-Defined in `src/lib/api/admin-client.ts`:
-
-- `AdminUserRow` - compact list row for `/admin/users`
-- `AdminUserDetail` - full profile for `/admin/users/[uuid]`
-- `AdminUpdateUserInput` - patch payload for full CRUD updates
-
-## TWA data source status
-
-User-facing TWA surfaces now use registered API read models backed by PostgreSQL. Legacy mock helpers may still exist as static placeholders, but marketplace, companies, wallet, map, QR, history, profile, onboarding, promo codes, and referral flows are API-driven.
+DB backups serialize operational tables including users, catalog, locations, subscriptions, growth models, sessions, audit, loyalty and history. Restore is destructive and protected by maintenance mode.

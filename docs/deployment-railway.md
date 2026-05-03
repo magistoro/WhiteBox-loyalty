@@ -13,7 +13,7 @@ The recommended production demo setup is:
 
 ## Database
 
-Use the Railway public PostgreSQL URL locally and in service variables when running from outside Railway.
+Use the Railway public PostgreSQL URL only in Railway service variables and GitHub Secrets.
 
 Use the internal Railway URL only for services running inside Railway.
 
@@ -24,12 +24,19 @@ DATABASE_URL=postgresql://...
 DIRECT_URL=postgresql://...
 ```
 
-Run migrations and seed once before the demo:
+Production migrations are applied by GitHub Actions after `main` is green. Manual migration is only for emergency operations:
 
 ```bash
 npm run db:migrate
 npm run db:generate
-npm run db:seed
+```
+
+Do not run `db:seed` against production unless you intentionally want to replace/demo-fill production data.
+
+Required GitHub Secret:
+
+```text
+PRODUCTION_DATABASE_URL
 ```
 
 ## API service
@@ -55,7 +62,7 @@ DATABASE_URL=postgresql://...
 DIRECT_URL=postgresql://...
 JWT_SECRET=<long-random-secret>
 JWT_EXPIRES_IN=15m
-JWT_REFRESH_EXPIRES_IN=7d
+JWT_REFRESH_EXPIRES_DAYS=7
 FRONTEND_ORIGIN=https://<web-domain>
 API_PORT=3001
 ```
@@ -110,6 +117,18 @@ DIRECT_URL=postgresql://...
 ```
 
 Set the generated web domain as `FRONTEND_ORIGIN` in the API service.
+
+## CI/CD handoff
+
+Railway should be connected to GitHub `main` and configured to wait for GitHub checks.
+
+Expected flow:
+
+1. PR to `main` runs full checks on a temporary PostgreSQL database.
+2. Repository owner merges manually.
+3. Push to `main` runs full checks again.
+4. GitHub Actions applies production Prisma migrations.
+5. Railway deploys `whitebox-api` and `whitebox-web` from the same commit.
 
 ## Why not FTP/static hosting?
 

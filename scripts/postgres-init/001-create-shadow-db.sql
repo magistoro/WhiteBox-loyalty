@@ -1,0 +1,1 @@
+CREATE DATABASE my_project_database_shadow;
