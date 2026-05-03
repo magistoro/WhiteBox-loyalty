@@ -1,71 +1,100 @@
 # WhiteBox - Project Map
 
-## Top-level structure
+## Current product shape
+
+WhiteBox is a loyalty marketplace with three surfaces:
+
+- TWA/mobile client app for end users.
+- Admin portal for operations, analytics, growth, database map, backups and audit.
+- Company portal placeholder for partner-facing finance/compliance flows.
+
+The runtime is a monorepo:
 
 ```text
 whitebox/
-  apps/
-    api/                   # NestJS backend
-      src/
-        auth/
-        admin/
-        maintenance/
-        registered/
-        health/
-        oauth/
-        prisma/
-  prisma/
-    schema.prisma
-    migrations/
-  src/
-    app/
-      (auth)/              # login/register
-      (twa)/               # mobile Telegram Web App routes
-      (portal)/            # desktop admin/company routes
-    components/
-      brand/
-      ui/
-    lib/
-      api/
-      prisma.ts
-  docs/project-map/
+  apps/api/              # NestJS REST API
+  prisma/                # Prisma schema, migrations, seed
+  src/app/(auth)/        # Login/register/email confirmation
+  src/app/(twa)/         # Mobile app routes
+  src/app/(portal)/      # Admin/company desktop portal routes
+  src/components/        # UI, brand, TWA components
+  src/lib/api/           # Typed API clients
+  docs/                  # Architecture, CI/CD, deployment docs
+  scripts/               # Railway and local developer helpers
 ```
+
+## Runtime entry points
+
+- Web dev: `npm run dev:web`
+- API dev: `npm run api:dev`
+- Combined local dev: `npm run dev:local`
+- Local DB: `npm run db:local:up`
+- Full verification: `npm run ci:verify`
+- Railway-aware build: `npm run build`
+- Railway-aware start: `npm run start`
 
 ## Important app routes
 
-- TWA (mobile): `/`, `/onboarding`, `/companies`, `/marketplace`, `/wallet/[id]`, `/map`, `/history`, `/scan`, `/settings`
-- Admin (desktop): `/admin`, `/admin/users`, `/admin/users/[uuid]`, `/admin/categories`, `/admin/companies`, `/admin/companies/[uuid]`, `/admin/subscriptions`, `/admin/growth`, `/admin/database`
-- Admin operations: `/admin/audit`, `/admin/audit/new`, `/admin/audit/backups`
-- Company (desktop): `/company`, `/company/payments`, `/company/compliance`
+TWA/mobile:
+
+- `/` dashboard with points balance, active subscriptions and loyalty cards.
+- `/onboarding` first-run tutorial with skip support.
+- `/companies` all partners with category and price/filter UX.
+- `/loyalty-cards` companies where the user has earned points.
+- `/marketplace` subscription catalog from DB.
+- `/marketplace/[id]` subscription details and activation.
+- `/wallet/[id]` company loyalty card, levels, subscriptions and addresses.
+- `/map` Yandex map with branches, clustering, route presets, user location and filters.
+- `/history` activity + archived subscriptions.
+- `/scan` QR screen.
+- `/settings` profile, favorites, promo/referral and subpages.
+
+Admin:
+
+- `/admin` dashboard.
+- `/admin/users` and `/admin/users/[uuid]` user operations.
+- `/admin/categories` category dictionary.
+- `/admin/companies` and `/admin/companies/[uuid]` company users, profile, locations and subscriptions.
+- `/admin/companies/[uuid]/clients` company client analytics.
+- `/admin/subscriptions` KPI/SLA/forecast analytics.
+- `/admin/growth` promo codes and referral campaign rules.
+- `/admin/database` interactive Prisma schema visualizer.
+- `/admin/audit`, `/admin/audit/new`, `/admin/audit/backups` audit and DB backups.
+- `/admin/payments`, `/admin/compliance` placeholders for future operational modules.
+
+Company portal:
+
+- `/company`, `/company/payments`, `/company/compliance`.
 
 ## Key files
 
-- `src/app/(portal)/layout.tsx` - desktop sidebar layout with `WhiteBox` branding.
-- `src/app/(portal)/admin/users/page.tsx` - user directory (read-only rows + profile navigation).
-- `src/app/(portal)/admin/users/[uuid]/page.tsx` - full user CRUD workspace.
-- `src/app/(portal)/admin/categories/page.tsx` - category CRUD workspace.
-- `src/app/(portal)/admin/companies/[uuid]/page.tsx` - company profile + company-bound subscriptions CRUD.
-- `src/app/(portal)/admin/database/page.tsx` - interactive DB map (zoom/pan/relations).
-- `src/app/(portal)/admin/growth/page.tsx` - promo code and referral campaign controls.
-- `src/app/(portal)/admin/audit/page.tsx` - audit feed UI with workspace filters.
-- `src/app/(portal)/admin/audit/backups/page.tsx` - DB backups manager + restore statuses.
-- `src/app/(twa)/onboarding/page.tsx` - first-run tutorial with skip flow.
-- `src/app/(twa)/settings/page.tsx` - rich profile, privacy, promo and referral actions.
-- `src/lib/api/admin-client.ts` - admin HTTP client methods.
-- `src/lib/api/twa-client.ts` - TWA registered API read/actions client.
-- `apps/api/src/admin/admin.controller.ts` - admin endpoints.
+- `prisma/schema.prisma` - source of truth for relational schema.
+- `prisma/seed.mjs` - professional demo seed data.
+- `apps/api/src/admin/admin.controller.ts` - admin API surface.
 - `apps/api/src/admin/admin.service.ts` - admin business logic.
-- `apps/api/src/maintenance/maintenance.guard.ts` - global API lock during restore.
-- `apps/api/src/maintenance/maintenance-state.service.ts` - restore stage state machine.
-- `apps/api/src/admin/admin.service.spec.ts` - admin unit tests.
+- `apps/api/src/registered/registered.controller.ts` - client/TWA API surface.
+- `apps/api/src/registered/registered.service.ts` - DB-backed mobile read models.
+- `apps/api/src/auth/auth.service.ts` - auth, sessions, account freeze/reactivation.
+- `apps/api/src/maintenance/*` - restore-time maintenance lock.
+- `src/middleware.ts` - web route UX redirection based on JWT role/expiry; API remains the security boundary.
+- `src/app/(portal)/admin/database/page.tsx` - visual DB map synced with Prisma models.
+- `src/app/(portal)/admin/growth/page.tsx` - promo/referral admin UI.
+- `src/app/(portal)/admin/companies/[uuid]/page.tsx` - company profile, addresses and subscriptions.
+- `src/app/(twa)/map/page.tsx` - Yandex Maps integration and location UX.
+- `src/lib/api/admin-client.ts`, `src/lib/api/twa-client.ts`, `src/lib/api/auth-client.ts` - frontend API clients.
+- `.github/workflows/whitebox-ci-cd.yml` - PR verification and production migration gate.
 
-## Layout conventions
+## Local and production environments
 
-- Root layout provides global theme/font shell.
-- `(twa)` applies `.twa-viewport` for mobile constrained UI.
-- `(portal)` applies desktop grid with sticky left menu.
+- Local development should use Docker PostgreSQL from `docker-compose.yml`.
+- Production DB credentials live in Railway variables and GitHub Secrets, not in committed files.
+- PRs run full checks against a temporary GitHub Actions PostgreSQL service.
+- Pushes to `main` run the same checks and then apply production Prisma migrations.
+- Railway deploys `whitebox-api` and `whitebox-web` from `main`.
 
 ## Notes
 
-- Admin UI is desktop-first and intentionally separate from TWA viewport constraints.
-- User role/status editing is done on profile page, not inline in the table.
+- User-facing TWA surfaces are DB-backed through `/api/registered/*`; `mockData` is legacy/static fallback only.
+- Points are company-scoped. Promo/referral point rewards require a company context and write normal loyalty ledger rows.
+- Company addresses are stored as `CompanyLocation` with coordinates, hours and active/main flags.
+- Payment providers are intentionally stubbed; subscription activation is currently a non-payment flow.

@@ -166,7 +166,19 @@ See `docs/ci-cd.md` for GitHub Actions checks, production migrations, and requir
 
 ## Docs
 
-See `docs/project-map/` for architecture, entities, routes, and services.
+See `docs/project-map/` for architecture, entities, routes, services, UI notes, and the admin database map.
+
+Key docs:
+
+- `docs/local-development.md`
+- `docs/ci-cd.md`
+- `docs/deployment-railway.md`
+- `docs/project-map/project-map.md`
+- `docs/project-map/project-architecture.md`
+- `docs/project-map/project-entities.md`
+- `docs/project-map/project-services.md`
+- `docs/project-map/project-ui.md`
+- `docs/project-map/database-map.md`
 
 ## Contribution Policy
 

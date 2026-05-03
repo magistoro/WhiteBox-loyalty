@@ -21,6 +21,11 @@ import {
   MailCheck,
   Wallet,
   ClipboardList,
+  MapPin,
+  Sparkles,
+  Ticket,
+  Megaphone,
+  UsersRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,28 +63,36 @@ const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 2.5;
 
 const nodes: Node[] = [
-  { id: "User", title: "User", subtitle: "identity", fields: ["id", "uuid", "telegramId?", "email", "role", "accountStatus"], x: 120, y: 120, color: "rgba(34,211,238,0.24)" },
-  { id: "Category", title: "Category", subtitle: "dictionary", fields: ["id", "slug", "name", "icon"], x: 510, y: 110, color: "rgba(16,185,129,0.24)" },
-  { id: "Company", title: "Company", subtitle: "partner", fields: ["id", "slug", "categoryId", "ownerUserId?", "subscriptionSpendPolicy"], x: 880, y: 110, color: "rgba(56,189,248,0.24)" },
-  { id: "Subscription", title: "Subscription", subtitle: "catalog", fields: ["id", "uuid", "slug", "price", "companyId?", "categoryId?"], x: 1270, y: 110, color: "rgba(99,102,241,0.24)" },
-  { id: "UserFavoriteCategory", title: "UserFavoriteCategory", subtitle: "pivot", fields: ["id", "userId", "categoryId"], x: 300, y: 390, color: "rgba(20,184,166,0.24)" },
-  { id: "CompanyCategory", title: "CompanyCategory", subtitle: "pivot", fields: ["id", "companyId", "categoryId"], x: 700, y: 390, color: "rgba(6,182,212,0.24)" },
-  { id: "CompanyLevelRule", title: "CompanyLevelRule", subtitle: "levels", fields: ["id", "companyId", "levelName", "minTotalSpend", "cashbackPercent"], x: 1030, y: 390, color: "rgba(14,165,233,0.24)" },
-  { id: "UserCompany", title: "UserCompany", subtitle: "pivot", fields: ["id", "userId", "companyId", "balance", "pointsToNextReward?"], x: 1360, y: 390, color: "rgba(217,70,239,0.22)" },
-  { id: "UserSubscription", title: "UserSubscription", subtitle: "pivot", fields: ["id", "userId", "subscriptionId", "status", "expiresAt?"], x: 1700, y: 390, color: "rgba(139,92,246,0.24)" },
-  { id: "RefreshToken", title: "RefreshToken", subtitle: "session", fields: ["id", "tokenHash", "userId", "expiresAt", "revokedAt?"], x: 120, y: 720, color: "rgba(251,191,36,0.24)" },
-  { id: "OAuthAccount", title: "OAuthAccount", subtitle: "federation", fields: ["id", "provider", "providerAccountId", "userId", "expiresAt?"], x: 450, y: 720, color: "rgba(251,146,60,0.24)" },
-  { id: "LoginEvent", title: "LoginEvent", subtitle: "security", fields: ["id", "userId", "ipAddress?", "countryCode?", "createdAt"], x: 780, y: 720, color: "rgba(249,115,22,0.24)" },
-  { id: "EmailChangeRequest", title: "EmailChangeRequest", subtitle: "security", fields: ["id", "userId", "requestedByUserId", "tokenHash", "expiresAt"], x: 1130, y: 720, color: "rgba(251,113,133,0.24)" },
-  { id: "LoyaltyTransaction", title: "LoyaltyTransaction", subtitle: "finance", fields: ["id", "uuid", "userId", "companyId", "type", "amount"], x: 1480, y: 720, color: "rgba(244,114,182,0.24)" },
-  { id: "AuditEvent", title: "AuditEvent", subtitle: "ops/security", fields: ["id", "workspace", "category", "actorUserId?", "targetUserId?", "result"], x: 1820, y: 720, color: "rgba(148,163,184,0.24)" },
+  { id: "User", title: "User", subtitle: "identity", fields: ["id", "uuid", "telegramId?", "email", "role", "accountStatus"], x: 120, y: 100, color: "rgba(34,211,238,0.24)" },
+  { id: "Category", title: "Category", subtitle: "dictionary", fields: ["id", "slug", "name", "icon"], x: 500, y: 90, color: "rgba(16,185,129,0.24)" },
+  { id: "Company", title: "Company", subtitle: "partner", fields: ["id", "slug", "categoryId", "ownerUserId?", "subscriptionSpendPolicy"], x: 880, y: 90, color: "rgba(56,189,248,0.24)" },
+  { id: "Subscription", title: "Subscription", subtitle: "catalog", fields: ["id", "uuid", "slug", "price", "companyId?", "categoryId?"], x: 1260, y: 90, color: "rgba(99,102,241,0.24)" },
+  { id: "CompanyLocation", title: "CompanyLocation", subtitle: "branches/map", fields: ["id", "uuid", "companyId", "address", "latitude", "longitude", "openTime", "workingDays"], x: 1640, y: 80, color: "rgba(45,212,191,0.24)" },
+  { id: "UserProfilePreference", title: "UserProfilePreference", subtitle: "profile", fields: ["id", "userId", "onboardingCompletedAt?", "profileVisibility", "marketingOptIn"], x: 80, y: 390, color: "rgba(125,211,252,0.22)" },
+  { id: "UserFavoriteCategory", title: "UserFavoriteCategory", subtitle: "pivot", fields: ["id", "userId", "categoryId"], x: 420, y: 390, color: "rgba(20,184,166,0.24)" },
+  { id: "CompanyCategory", title: "CompanyCategory", subtitle: "pivot", fields: ["id", "companyId", "categoryId"], x: 760, y: 390, color: "rgba(6,182,212,0.24)" },
+  { id: "CompanyLevelRule", title: "CompanyLevelRule", subtitle: "levels", fields: ["id", "companyId", "levelName", "minTotalSpend", "cashbackPercent"], x: 1100, y: 390, color: "rgba(14,165,233,0.24)" },
+  { id: "UserCompany", title: "UserCompany", subtitle: "points balance", fields: ["id", "userId", "companyId", "balance", "pointsToNextReward?"], x: 1440, y: 390, color: "rgba(217,70,239,0.22)" },
+  { id: "UserSubscription", title: "UserSubscription", subtitle: "active/archive", fields: ["id", "userId", "subscriptionId", "status", "expiresAt?", "willAutoRenew"], x: 1780, y: 390, color: "rgba(139,92,246,0.24)" },
+  { id: "PromoCode", title: "PromoCode", subtitle: "growth", fields: ["id", "code", "rewardType", "points", "companyId?", "subscriptionId?"], x: 120, y: 720, color: "rgba(250,204,21,0.24)" },
+  { id: "PromoCodeRedemption", title: "PromoCodeRedemption", subtitle: "growth ledger", fields: ["id", "promoCodeId", "userId", "redeemedAt"], x: 480, y: 720, color: "rgba(234,179,8,0.22)" },
+  { id: "ReferralCampaign", title: "ReferralCampaign", subtitle: "growth rules", fields: ["id", "title", "inviterBonusPoints", "invitedBonusPoints", "bonusCompanyId?"], x: 840, y: 720, color: "rgba(132,204,22,0.24)" },
+  { id: "ReferralInvite", title: "ReferralInvite", subtitle: "invite ledger", fields: ["id", "code", "inviterUserId", "invitedUserId?", "status"], x: 1200, y: 720, color: "rgba(163,230,53,0.22)" },
+  { id: "LoyaltyTransaction", title: "LoyaltyTransaction", subtitle: "points ledger", fields: ["id", "uuid", "userId", "companyId", "type", "status", "amount"], x: 1560, y: 720, color: "rgba(244,114,182,0.24)" },
+  { id: "RefreshToken", title: "RefreshToken", subtitle: "session", fields: ["id", "tokenHash", "userId", "expiresAt", "revokedAt?"], x: 120, y: 1060, color: "rgba(251,191,36,0.24)" },
+  { id: "OAuthAccount", title: "OAuthAccount", subtitle: "federation", fields: ["id", "provider", "providerAccountId", "userId", "expiresAt?"], x: 480, y: 1060, color: "rgba(251,146,60,0.24)" },
+  { id: "LoginEvent", title: "LoginEvent", subtitle: "security", fields: ["id", "userId", "ipAddress?", "countryCode?", "createdAt"], x: 840, y: 1060, color: "rgba(249,115,22,0.24)" },
+  { id: "EmailChangeRequest", title: "EmailChangeRequest", subtitle: "security", fields: ["id", "userId", "requestedByUserId", "tokenHash", "expiresAt"], x: 1200, y: 1060, color: "rgba(251,113,133,0.24)" },
+  { id: "AuditEvent", title: "AuditEvent", subtitle: "ops/security", fields: ["id", "workspace", "category", "actorUserId?", "targetUserId?", "result"], x: 1560, y: 1060, color: "rgba(148,163,184,0.24)" },
 ];
 
 const edges: Edge[] = [
   { from: "Category", to: "Company", label: "1:N" },
   { from: "Category", to: "Subscription", label: "1:N" },
   { from: "Company", to: "Subscription", label: "1:N" },
+  { from: "Company", to: "CompanyLocation", label: "1:N" },
   { from: "User", to: "Company", label: "1:1 owner" },
+  { from: "User", to: "UserProfilePreference", label: "1:1" },
   { from: "User", to: "UserFavoriteCategory", label: "1:N" },
   { from: "Category", to: "UserFavoriteCategory", label: "1:N" },
   { from: "Company", to: "CompanyCategory", label: "1:N" },
@@ -89,6 +102,13 @@ const edges: Edge[] = [
   { from: "Company", to: "UserCompany", label: "1:N" },
   { from: "User", to: "UserSubscription", label: "1:N" },
   { from: "Subscription", to: "UserSubscription", label: "1:N" },
+  { from: "Company", to: "PromoCode", label: "1:N points" },
+  { from: "Subscription", to: "PromoCode", label: "1:N promo" },
+  { from: "PromoCode", to: "PromoCodeRedemption", label: "1:N" },
+  { from: "User", to: "PromoCodeRedemption", label: "1:N" },
+  { from: "Company", to: "ReferralCampaign", label: "1:N bonus" },
+  { from: "User", to: "ReferralInvite", label: "1:N inviter" },
+  { from: "User", to: "ReferralInvite", label: "1:1 invited" },
   { from: "User", to: "RefreshToken", label: "1:N" },
   { from: "User", to: "OAuthAccount", label: "1:N" },
   { from: "User", to: "LoginEvent", label: "1:N" },
@@ -110,10 +130,10 @@ const presets: SchemaPreset[] = [
   },
   {
     id: "company-flow",
-    label: "Company + User + Subscription",
-    description: "Core business links for partner subscriptions",
+    label: "Company, Locations + Subscriptions",
+    description: "Partners, branches, categories and paid plans",
     icon: Building2,
-    visibleNodes: ["User", "Company", "Subscription", "UserCompany", "UserSubscription", "CompanyCategory", "CompanyLevelRule", "Category"],
+    visibleNodes: ["User", "Category", "Company", "CompanyLocation", "Subscription", "UserCompany", "UserSubscription", "CompanyCategory", "CompanyLevelRule"],
   },
   {
     id: "security",
@@ -127,14 +147,28 @@ const presets: SchemaPreset[] = [
     label: "Loyalty Structure",
     description: "Categories, companies and loyalty transactions",
     icon: Link2,
-    visibleNodes: ["User", "Category", "Company", "CompanyCategory", "UserCompany", "LoyaltyTransaction", "UserFavoriteCategory"],
+    visibleNodes: ["User", "Category", "Company", "CompanyLocation", "CompanyCategory", "UserCompany", "LoyaltyTransaction", "UserFavoriteCategory", "CompanyLevelRule"],
+  },
+  {
+    id: "growth",
+    label: "Growth: Promo + Referral",
+    description: "Promo code redemption and invite-a-friend rules",
+    icon: Megaphone,
+    visibleNodes: ["User", "Company", "Subscription", "PromoCode", "PromoCodeRedemption", "ReferralCampaign", "ReferralInvite", "LoyaltyTransaction", "UserCompany"],
+  },
+  {
+    id: "map",
+    label: "Map + Branches",
+    description: "Company addresses, map markers and category context",
+    icon: MapPin,
+    visibleNodes: ["Company", "CompanyLocation", "Category", "CompanyCategory", "UserCompany", "LoyaltyTransaction", "Subscription"],
   },
 ];
 
 const nodeMeta: Record<
   string,
   {
-    group: "core" | "links" | "security" | "finance";
+    group: "core" | "map" | "links" | "growth" | "security" | "finance";
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
@@ -142,11 +176,17 @@ const nodeMeta: Record<
   Category: { group: "core", icon: Tags },
   Company: { group: "core", icon: Building2 },
   Subscription: { group: "core", icon: BadgeDollarSign },
+  CompanyLocation: { group: "map", icon: MapPin },
+  UserProfilePreference: { group: "links", icon: Sparkles },
   UserFavoriteCategory: { group: "links", icon: GitMerge },
   CompanyCategory: { group: "links", icon: GitMerge },
   CompanyLevelRule: { group: "links", icon: GitMerge },
   UserCompany: { group: "links", icon: GitMerge },
   UserSubscription: { group: "links", icon: GitMerge },
+  PromoCode: { group: "growth", icon: Ticket },
+  PromoCodeRedemption: { group: "growth", icon: Ticket },
+  ReferralCampaign: { group: "growth", icon: Megaphone },
+  ReferralInvite: { group: "growth", icon: UsersRound },
   RefreshToken: { group: "security", icon: KeyRound },
   OAuthAccount: { group: "security", icon: KeyRound },
   LoginEvent: { group: "security", icon: LogIn },
@@ -157,7 +197,9 @@ const nodeMeta: Record<
 
 const nodeGroups = [
   { id: "core", label: "Core Models", icon: LayoutGrid },
+  { id: "map", label: "Location / Map Models", icon: MapPin },
   { id: "links", label: "Pivot / Link Models", icon: Link2 },
+  { id: "growth", label: "Growth Models", icon: Megaphone },
   { id: "security", label: "Security Models", icon: Shield },
   { id: "finance", label: "Finance / Ops Models", icon: Wallet },
 ] as const;

@@ -4,85 +4,90 @@
 
 | Path | Purpose | Access |
 |---|---|---|
-| `/` | TWA home | CLIENT |
-| `/login` | Login page | Public |
-| `/register` | Registration page | Public |
-| `/onboarding` | First-run tutorial with skip support | CLIENT |
-| `/companies` | Partners list | CLIENT |
-| `/loyalty-cards` | User loyalty cards from companies where points were earned | CLIENT |
+| `/` | TWA dashboard | CLIENT |
+| `/login` | Login | Public |
+| `/register` | Registration | Public |
+| `/email-change/confirm` | Email change confirmation | Public |
+| `/onboarding` | First-run tutorial with skip | CLIENT |
+| `/companies` | All partners | CLIENT |
+| `/loyalty-cards` | Companies where the user has points/activity | CLIENT |
 | `/marketplace` | Subscription catalog | CLIENT |
-| `/marketplace/[id]` | Subscription details | CLIENT |
-| `/wallet/[id]` | Loyalty card details | CLIENT |
-| `/map` | Partners map | CLIENT |
-| `/history` | Points history | CLIENT |
-| `/scan` | QR scan surface | CLIENT |
-| `/settings` + subpages | User settings | CLIENT |
-| `/help/*` | Help and legal pages | Public |
-| `/company` + subpages | Company workspace | COMPANY / ADMIN |
+| `/marketplace/[id]` | Subscription detail | CLIENT |
+| `/wallet/[id]` | Company loyalty card detail | CLIENT |
+| `/map` | Yandex partner map | CLIENT |
+| `/history` | Activity and subscription archive | CLIENT |
+| `/scan` | User QR | CLIENT |
+| `/settings` | Profile, stats, favorites, promo/referral | CLIENT |
+| `/settings/account` | Privacy/account actions | CLIENT |
+| `/settings/favorites` | Favorite categories | CLIENT |
+| `/settings/business`, `/settings/partnership`, `/settings/reviews` | Profile subpages/placeholders | CLIENT |
+| `/help/*` | FAQ/contact/privacy | Public |
+| `/company/*` | Company portal | COMPANY/ADMIN |
 | `/admin` | Admin dashboard | ADMIN |
-| `/admin/users` | Users table and search | ADMIN |
-| `/admin/users/[uuid]` | Full user profile CRUD | ADMIN |
-| `/admin/categories` | Categories CRUD | ADMIN |
-| `/admin/companies` | Company accounts directory | ADMIN |
-| `/admin/companies/[uuid]` | Company profile + subscriptions CRUD | ADMIN |
-| `/admin/companies/[uuid]/clients` | Company clients table with search/sort/pagination + expandable details | ADMIN |
-| `/admin/subscriptions` | Subscription stats and UUID lookup | ADMIN |
-| `/admin/growth` | Promo codes and referral campaign controls | ADMIN |
-| `/admin/database` | Interactive DB schema map | ADMIN |
-| `/admin/payments` | Payments placeholder | ADMIN |
-| `/admin/compliance` | Compliance placeholder | ADMIN |
-| `/admin/audit` | Audit feed (manager/developer) | ADMIN |
-| `/admin/audit/new` | Manual audit event form | ADMIN |
-| `/admin/audit/backups` | Backup manager with restore flow | ADMIN |
+| `/admin/users`, `/admin/users/[uuid]` | User operations | ADMIN |
+| `/admin/categories` | Category CRUD | ADMIN |
+| `/admin/companies`, `/admin/companies/[uuid]` | Company accounts/profile/locations/subscriptions | ADMIN |
+| `/admin/companies/[uuid]/clients` | Company client analytics | ADMIN |
+| `/admin/subscriptions` | Subscription analytics | ADMIN |
+| `/admin/growth` | Promo/referral management | ADMIN |
+| `/admin/database` | Prisma schema visualizer | ADMIN |
+| `/admin/audit`, `/admin/audit/new`, `/admin/audit/backups` | Audit and backups | ADMIN |
+| `/admin/payments`, `/admin/compliance` | Future modules | ADMIN |
 
 ## Layout hierarchy
 
-- `app/layout.tsx`: root shell, global dark theme and typography.
-- `app/(twa)/layout.tsx`: mobile viewport (`.twa-viewport`), `PageTransition`, `BottomNav`.
-- `app/(portal)/layout.tsx`: desktop workspace with left sidebar, brand/logo, section menu.
-- `app/(auth)/layout.tsx`: centered auth forms.
+- `src/app/layout.tsx`: root shell, dark theme and typography.
+- `src/app/(auth)/layout.tsx`: centered auth pages.
+- `src/app/(twa)/layout.tsx`: mobile viewport, transitions and bottom nav.
+- `src/app/(portal)/layout.tsx`: desktop portal sidebar and content grid.
 
-## Admin UX notes
+## TWA UX state
 
-- Admin and company consoles are desktop-first; they are not constrained by TWA mobile width.
-- Left menu includes `Dashboard`, user and subscription tools, operations pages, and `Database map`.
-- Users table is read-only for role/status in-place; editing is moved to `/admin/users/[uuid]`.
-- Sensitive fields are protected in profile view: password/email are not directly editable, and account deletion schedule is read-only with explicit reactivation action.
-- Company profile uses `Min redeem` as the points threshold for allowing redemption; levels are configured separately for cashback progression.
-- Audit page includes workspace-aware stream for operations and developer git events.
-- Backup page includes save/download/restore/delete actions and live restore timeline.
-- During restore, operation buttons are locked and UI shows maintenance + progress stages.
-- Database map supports wheel zoom, node visibility toggle, and schema view presets for focused exploration.
-- TWA home, marketplace, partners, category, wallet, map, and history surfaces now read user-facing data from registered API read models.
-- `/onboarding` is a polished first-run flow for new CLIENT users; it explains favorites, geolocation, QR, points, subscriptions, and map value, and always provides a skip action.
-- `/settings` is now a richer profile surface with activity level, favorite categories, promo-code redemption, referral code/redeem actions, and privacy switches.
-- `/admin/growth` manages promo codes and referral campaign rules with status cards and redemption stats.
-- `/map` uses Yandex Maps JavaScript API v3 via `reactify` and renders saved `CompanyLocation` coordinates from the registered API.
-- `/map` supports browser geolocation opt-in, a visible user marker, search by company/address/category, `Open now`, active-subscription filtering, zoom-aware marker clustering, category-icon custom markers, and route presets for car/walking/public transit.
-- `/map` selected-location cards show open/closed status, working hours, distance when geolocation is available, user points at the partner, route actions, wallet-card navigation, and nearby branches for the same company.
-- Admin company profile pages include a `Locations` section for multi-address companies; addresses are geocoded server-side and persisted with coordinates.
-- TWA marketplace and partner filters use compact quick chips plus extended sheet filters; partner filters respect companies with multiple categories.
-- Subscription detail activation uses `/api/registered/subscriptions/:uuid/activate` in the current non-payment flow.
-- Wallet detail renders a fresh canvas QR from `/api/registered/qr` payload and shows a company level ladder calculated from `CompanyLevelRule`.
+- QR element is only on `/scan`; it was removed from global/profile surfaces.
+- Bottom nav labels use `Profile` instead of old `Settings` naming where applicable.
+- Favorite categories can be selected in onboarding/settings and are capped at 10 in UI/API validation.
+- Marketplace and partner filters use compact quick chips and extended filter panels.
+- Partner filters respect multi-category companies and hide empty categories where appropriate.
 
-## Manual testing checklist
+## Map UX
 
-- Register a new CLIENT account and verify redirect to `/onboarding`.
-- On `/onboarding`, open favorite categories, save at least one category, and return to the tutorial.
-- On `/onboarding`, press geolocation allow/deny and verify the tutorial remains usable.
-- On `/onboarding`, press `Skip` and verify the app opens normally.
-- In admin `/admin/growth`, create a `POINTS` promo code and verify it appears in the inventory.
-- In TWA `/settings`, redeem the points promo and verify the success message plus updated activity/points after refresh.
-- In admin `/admin/growth`, create a `SUBSCRIPTION` promo with a valid subscription UUID.
-- In TWA `/settings`, redeem the subscription promo and verify the subscription appears in active subscriptions.
-- In admin `/admin/growth`, change referral inviter/invited points and pause/activate the campaign.
-- In TWA `/settings`, copy a referral code from user A and redeem it on user B; verify duplicate/self redemption is blocked.
-- In TWA `/settings`, toggle privacy switches and reload the page; verify persisted state.
-- Run database backup after creating promo/referral data and verify the backup payload includes growth tables.
+- Yandex Maps JS API v3 is used on `/map`.
+- Browser geolocation is optional and shows a user marker when allowed.
+- Search matches company name, address and category and shows results under the input without chaotic camera jumps.
+- Filters include all/main branches, open-now and active-subscription partners.
+- Markers use category icons and cluster at low zoom.
+- Clicking a cluster shows up to 10 addresses below the map.
+- Selected-point card shows open/closed state, categories, hours, distance, user points, route presets, open-card action and nearby branches.
+- Route presets open Yandex routes for car, walk and public transit.
+
+## Admin UX
+
+- Admin pages are desktop-first.
+- Company pages use collapsible sections with quick-jump controls.
+- Locations section supports multiple addresses, geocoding, main/active flags, hours and duplicate prevention.
+- Subscriptions admin has KPI/SLA cards, 30/90-day forecast and visual analytics.
+- Growth admin supports promo search/sort/edit/pause/activate and referral campaign settings.
+- Database map has grouped chips, icons, presets, hide/show eye buttons, pan and wheel zoom.
+- Backups UI supports snapshot creation, download, restore confirmation, deletion and live restore statuses.
 
 ## Key components
 
-- `src/components/brand/WhiteBoxLogo.tsx` - brand logo used in portal sidebar.
-- `src/components/ui/select-field.tsx` - styled select control with consistent dropdown arrow.
-- `src/components/PageTransition.tsx` - route-level animation wrapper.
-- `src/components/BottomNav.tsx` - TWA mobile bottom navigation.
+- `WhiteBoxLogo` - portal brand.
+- `BottomNav` - TWA nav.
+- `CategoryIcon` - shared category icon renderer.
+- `CategoryChipStrip` - horizontal category chips.
+- `select-field`, `category-select`, `category-multi-select` - styled form controls.
+- `FrozenAccountDialog`, `DeleteAccountDialog`, `ChangePasswordDialog` - account state UX.
+
+## Manual smoke checklist
+
+- Register client -> onboarding appears -> skip works.
+- Login admin/company/client seed accounts.
+- Admin creates/edits company location and sees coordinates saved.
+- TWA map shows branch marker and route button.
+- Activate marketplace subscription -> dashboard active subscriptions updates.
+- Earn points for company -> `/loyalty-cards` and `/wallet/[id]` update.
+- Create points promo -> redeem in TWA -> loyalty transaction appears.
+- Create subscription promo -> redeem in TWA -> active subscription appears.
+- Referral code redeem rewards both sides and blocks self/duplicate redemption.
+- Create backup -> download -> restore status UI updates.
