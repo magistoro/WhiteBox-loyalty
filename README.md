@@ -15,10 +15,23 @@ npm install
 npx prisma generate
 ```
 
+## Local database
+
+Use a local PostgreSQL database for development:
+
+```bash
+copy .env.example .env
+npm run db:local:up
+npm run db:migrate:dev
+npm run db:seed
+```
+
+See `docs/local-development.md` for the full local setup.
+
 ## Run the web app (port 3000)
 
 ```bash
-npm run dev
+npm run dev:web
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -114,7 +127,13 @@ Set `YANDEX_GEOCODER_API_KEY=<key>` to let admin company locations resolve addre
 
 ## Tests
 
-API tests:
+Full local verification:
+
+```bash
+npm run ci:verify
+```
+
+API tests only:
 
 ```bash
 npm run api:test
@@ -143,10 +162,23 @@ For the investor demo / production preview, deploy to Railway as two Node servic
 - `whitebox-web` - Next.js web app
 
 See `docs/deployment-railway.md` for build commands, start commands, environment variables, and the post-deploy checklist.
+See `docs/ci-cd.md` for GitHub Actions checks, production migrations, and required GitHub Secrets.
 
 ## Docs
 
-See `docs/project-map/` for architecture, entities, routes, and services.
+See `docs/project-map/` for architecture, entities, routes, services, UI notes, and the admin database map.
+
+Key docs:
+
+- `docs/local-development.md`
+- `docs/ci-cd.md`
+- `docs/deployment-railway.md`
+- `docs/project-map/project-map.md`
+- `docs/project-map/project-architecture.md`
+- `docs/project-map/project-entities.md`
+- `docs/project-map/project-services.md`
+- `docs/project-map/project-ui.md`
+- `docs/project-map/database-map.md`
 
 ## Contribution Policy
 

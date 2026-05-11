@@ -17,7 +17,14 @@ Rules:
 1. Create/update your working branch.
 2. Commit and push branch.
 3. Open PR to `main`.
-4. Wait for owner review and manual merge.
+4. Wait for GitHub Actions checks.
+5. Wait for owner review and manual merge.
+
+## CI/CD Gate
+
+- PRs run full verification against a temporary PostgreSQL database.
+- Merges to `main` run the same verification and then apply production Prisma migrations.
+- Railway deploys `whitebox-api` and `whitebox-web` from `main` after checks are green.
 
 ## Local Safety Guard
 
