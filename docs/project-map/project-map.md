@@ -2,10 +2,11 @@
 
 ## Current product shape
 
-WhiteBox is a loyalty marketplace with three surfaces:
+WhiteBox is a loyalty marketplace with four active surfaces:
 
 - TWA/mobile client app for end users.
-- Admin portal for operations, analytics, growth, database map, backups and audit.
+- Public landing and verified company intake.
+- Admin portal for operations, analytics, growth, database map, backups, audit, support and verification.
 - Company portal placeholder for partner-facing finance/compliance flows.
 
 The runtime is a monorepo:
@@ -15,6 +16,7 @@ whitebox/
   apps/api/              # NestJS REST API
   prisma/                # Prisma schema, migrations, seed
   src/app/(auth)/        # Login/register/email confirmation
+  src/app/company/       # Public company registration and verification intake
   src/app/(twa)/         # Mobile app routes
   src/app/(portal)/      # Admin/company desktop portal routes
   src/components/        # UI, brand, TWA components
@@ -48,19 +50,31 @@ TWA/mobile:
 - `/history` activity + archived subscriptions.
 - `/scan` QR screen.
 - `/settings` profile, favorites, promo/referral and subpages.
+- `/season-pass` experimental subscription/gamification surface.
 
 Admin:
 
 - `/admin` dashboard.
-- `/admin/users` and `/admin/users/[uuid]` user operations.
+- `/admin/users`, `/admin/users/[uuid]`, `/admin/users/[uuid]/permissions` user operations and granular permissions.
 - `/admin/categories` category dictionary.
 - `/admin/companies` and `/admin/companies/[uuid]` company users, profile, locations and subscriptions.
 - `/admin/companies/[uuid]/clients` company client analytics.
+- `/admin/company-verifications` and `/admin/company-verifications/[uuid]` verified partner intake review.
+- `/admin/leads` and `/admin/leads/[uuid]` landing lead inbox with Telegram delivery history.
+- `/admin/telegram` admin Telegram direct-message connection.
+- `/admin/support` support-only workspace.
+- `/admin/finance` finance operations and approval workflow placeholder.
 - `/admin/subscriptions` KPI/SLA/forecast analytics.
 - `/admin/growth` promo codes and referral campaign rules.
 - `/admin/database` interactive Prisma schema visualizer.
 - `/admin/audit`, `/admin/audit/new`, `/admin/audit/backups` audit and DB backups.
 - `/admin/payments`, `/admin/compliance` placeholders for future operational modules.
+- `/admin/test-screens/*` design lab screens for gamification experiments.
+
+Public:
+
+- `/landing` dark WhiteBox marketing landing with Telegram-backed contact form.
+- `/company/register` multi-step company account request and verification form.
 
 Company portal:
 
@@ -79,8 +93,13 @@ Company portal:
 - `src/middleware.ts` - web route UX redirection based on JWT role/expiry; API remains the security boundary.
 - `src/app/(portal)/admin/database/page.tsx` - visual DB map synced with Prisma models.
 - `src/app/(portal)/admin/growth/page.tsx` - promo/referral admin UI.
+- `src/app/(portal)/admin/company-verifications/*` - company verification review and passport cleanup.
+- `src/app/(portal)/admin/leads/*` - landing lead processing and Telegram retry UI.
+- `src/app/(portal)/admin/telegram/page.tsx` - Telegram admin linking screen.
 - `src/app/(portal)/admin/companies/[uuid]/page.tsx` - company profile, addresses and subscriptions.
 - `src/app/(twa)/map/page.tsx` - Yandex Maps integration and location UX.
+- `src/lib/i18n/*` - portable RU/EN dictionaries, locale detection and persistence.
+- `src/lib/telegram/*` - Telegram client, webhook handlers, admin linking and delivery tests.
 - `src/lib/api/admin-client.ts`, `src/lib/api/twa-client.ts`, `src/lib/api/auth-client.ts` - frontend API clients.
 - `.github/workflows/whitebox-ci-cd.yml` - PR verification and production migration gate.
 
@@ -97,4 +116,7 @@ Company portal:
 - User-facing TWA surfaces are DB-backed through `/api/registered/*`; `mockData` is legacy/static fallback only.
 - Points are company-scoped. Promo/referral point rewards require a company context and write normal loyalty ledger rows.
 - Company addresses are stored as `CompanyLocation` with coordinates, hours and active/main flags.
+- Company verification creates a user first and then links/activates company access after admin approval.
+- Passport photos are encrypted in local private storage and removed after approve/reject cleanup.
+- Admin UI uses one global language switcher in the navigation shell; page strings are moving into structured dictionaries.
 - Payment providers are intentionally stubbed; subscription activation is currently a non-payment flow.

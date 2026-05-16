@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import {
   type ApiCategory,
+  getCachedFavoriteCategorySlugs,
+  getCachedRegisteredCategories,
   getFavoriteCategorySlugs,
   getRegisteredCategories,
   saveFavoriteCategorySlugs,
@@ -26,6 +28,10 @@ function FavoriteCategoriesContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const cachedCategories = getCachedRegisteredCategories();
+    const cachedFavorites = getCachedFavoriteCategorySlugs();
+    if (cachedCategories.length) setCategories(cachedCategories);
+    if (cachedFavorites.length) setSelected(cachedFavorites);
     void (async () => {
       const [all, favorites] = await Promise.all([
         getRegisteredCategories(),

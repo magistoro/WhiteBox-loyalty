@@ -112,7 +112,7 @@ export async function login(body: {
       return {
         message: Array.isArray(data.message)
           ? data.message.join(", ")
-          : data.message ?? "Login failed",
+          : data.message ?? `Login failed (HTTP ${res.status})`,
       };
     }
     return data as AuthTokensResponse;

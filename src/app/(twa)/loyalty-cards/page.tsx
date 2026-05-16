@@ -5,8 +5,8 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowLeft, ChevronRight, Search, Wallet } from "lucide-react";
 import type { ApiCategory } from "@/lib/api/categories-client";
-import { getFavoriteCategorySlugs } from "@/lib/api/categories-client";
-import { getTwaDashboard, type TwaCompany, type TwaDashboard } from "@/lib/api/twa-client";
+import { getCachedFavoriteCategorySlugs, getFavoriteCategorySlugs } from "@/lib/api/categories-client";
+import { getCachedTwaDashboard, getTwaDashboard, type TwaCompany, type TwaDashboard } from "@/lib/api/twa-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
 import { cn } from "@/lib/utils";
+import { TwaLoadingScreen } from "@/components/twa/TwaLoadingScreen";
 
 const item = {
   hidden: { opacity: 0, y: 8 },
@@ -35,6 +36,13 @@ export default function LoyaltyCardsPage() {
 
   useEffect(() => {
     let ignore = false;
+    const cachedDashboard = getCachedTwaDashboard();
+    const cachedFavorites = getCachedFavoriteCategorySlugs();
+    if (cachedDashboard.wallet.companies.length || cachedDashboard.activeSubscriptions.length) {
+      setDashboard(cachedDashboard);
+      setLoading(false);
+    }
+    if (cachedFavorites.length) setFavoriteSlugs(cachedFavorites);
     void Promise.all([getTwaDashboard(), getFavoriteCategorySlugs()]).then(([dashboardData, favorites]) => {
       if (ignore) return;
       setDashboard(dashboardData);
@@ -84,6 +92,10 @@ export default function LoyaltyCardsPage() {
       return true;
     });
   }, [loyaltyCompanies, searchQuery, selectedCategory]);
+
+  if (loading && !dashboard) {
+    return <TwaLoadingScreen title="Loading loyalty cards" subtitle="Preparing partners where you have earned points." />;
+  }
 
   return (
     <motion.div
@@ -217,7 +229,7 @@ export default function LoyaltyCardsPage() {
         })}
       </ul>
 
-      {loading && <p className="py-12 text-center text-sm text-muted-foreground">Loading loyalty cards...</p>}
+      {loading && filteredCompanies.length > 0 && <p className="py-4 text-center text-xs text-muted-foreground">Refreshing loyalty cards...</p>}
       {!loading && filteredCompanies.length === 0 && (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">No loyalty cards match your filters.</p>

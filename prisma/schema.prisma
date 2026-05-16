@@ -17,11 +17,14 @@ enum SubscriptionStatus {
   CANCELED
 }
 
-/// Application role: TWA loyalty app users are CLIENT; company portals & admin consoles use COMPANY / ADMIN.
+/// Application role: TWA loyalty app users are CLIENT; company portals & admin consoles use COMPANY / admin roles.
 enum UserRole {
   CLIENT
   COMPANY
   ADMIN
+  SUPER_ADMIN
+  MANAGER
+  SUPPORT
 }
 
 enum AccountStatus {
@@ -69,6 +72,43 @@ enum AuditResult {
   BLOCKED
 }
 
+enum LandingLeadStatus {
+  NEW
+  IN_PROGRESS
+  CLOSED
+  SPAM
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum CompanyEmploymentType {
+  SELF_EMPLOYED
+  INDIVIDUAL_ENTREPRENEUR
+}
+
+enum CompanyVerificationStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWING
+  APPROVED
+  REJECTED
+}
+
+enum IdentityVerificationMode {
+  FULL
+  DEFERRED
+}
+
+enum PassportFileStatus {
+  ACTIVE
+  DELETED
+  MISSING
+}
+
 enum PromoCodeRewardType {
   POINTS
   SUBSCRIPTION
@@ -78,6 +118,34 @@ enum ReferralInviteStatus {
   CREATED
   REDEEMED
   REWARDED
+}
+
+enum PermissionScope {
+  USERS
+  COMPANIES
+  COMPANY_VERIFICATIONS
+  FINANCE
+  SUPPORT
+  AUDIT
+  DATABASE
+  TELEGRAM
+  SETTINGS
+}
+
+enum FinanceOperationType {
+  PAYOUT_REQUEST
+  PAYOUT_APPROVAL
+  MANUAL_ADJUSTMENT
+  REFUND
+}
+
+enum FinanceOperationStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PAID
+  CANCELED
 }
 
 model User {
@@ -111,6 +179,26 @@ model User {
   promoRedemptions PromoCodeRedemption[]
   referralInvites ReferralInvite[] @relation("ReferralInviter")
   redeemedReferralInvites ReferralInvite[] @relation("ReferralInvited")
+  telegramLinkTokens TelegramLinkToken[]
+  permissions AdminUserPermission[]
+  requestedFinanceOperations FinanceOperation[] @relation("FinanceRequestedBy")
+  approvedFinanceOperations FinanceOperation[] @relation("FinanceApprovedBy")
+}
+
+model AdminUserPermission {
+  id        String          @id @default(cuid())
+  userId    Int
+  scope     PermissionScope
+  canView   Boolean         @default(false)
+  canEdit   Boolean         @default(false)
+  canApprove Boolean        @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scope])
+  @@index([scope])
 }
 
 model Category {
@@ -151,6 +239,28 @@ model Company {
   subscriptionSpendPolicy SubscriptionSpendPolicy @default(EXCLUDE)
   isActive          Boolean   @default(true)
   ownerUserId       Int?      @unique
+  employmentType    CompanyEmploymentType?
+  identityVerificationMode IdentityVerificationMode @default(FULL)
+  identityVerificationCompleted Boolean @default(false)
+  verificationStatus CompanyVerificationStatus @default(DRAFT)
+  legalFirstName    String?
+  legalMiddleName   String?
+  legalLastName     String?
+  birthDate         DateTime?
+  legalFullName     String?
+  legalInn          String?
+  legalOgrnip       String?
+  legalRegistrationRegion String?
+  payoutBankName    String?
+  payoutBik         String?
+  payoutAccount     String?
+  payoutCorrespondentAccount String?
+  payoutCardLast4   String?
+  passportVerificationStatus CompanyVerificationStatus @default(DRAFT)
+  passportLast4     String?
+  passportDataDeletedAt DateTime?
+  verificationSubmittedAt DateTime?
+  verificationReviewedAt DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -164,8 +274,119 @@ model Company {
   referralCampaigns ReferralCampaign[] @relation("ReferralBonusCompany")
   userLinks         UserCompany[]
   loyaltyTransactions LoyaltyTransaction[]
+  verificationApplications CompanyVerificationApplication[]
+  financeOperations FinanceOperation[]
 
   @@index([categoryId])
+  @@index([verificationStatus, verificationSubmittedAt])
+}
+
+model CompanyVerificationApplication {
+  id                Int                       @id @default(autoincrement())
+  uuid              String                    @unique @default(uuid())
+  companyId         Int?
+  employmentType    CompanyEmploymentType
+  identityVerificationMode IdentityVerificationMode @default(FULL)
+  status            CompanyVerificationStatus @default(SUBMITTED)
+  contactName       String
+  contactEmail      String
+  contactTelegram   String?
+  companyName       String
+  businessCategory  String
+  legalFirstName    String?
+  legalMiddleName   String?
+  legalLastName     String?
+  birthDate         DateTime?
+  legalFullName     String
+  legalInn          String
+  legalOgrnip       String?
+  legalRegistrationRegion String?
+  payoutBankName    String?
+  payoutBik         String?
+  payoutAccount     String?
+  payoutCorrespondentAccount String?
+  payoutCardLast4   String?
+  passportEncryptedPayload String?
+  passportEncryptionIv String?
+  passportEncryptionTag String?
+  passportLast4     String?
+  verificationDeferralReason String?
+  passportDataDeletedAt DateTime?
+  consentAcceptedAt DateTime
+  ipAddress         String?
+  userAgent         String?
+  adminNotifiedAt   DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  company           Company?                  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  passportFiles     PassportVerificationFile[]
+
+  @@index([status, createdAt])
+  @@index([contactEmail])
+  @@index([legalInn])
+}
+
+model PassportVerificationFile {
+  id             Int                @id @default(autoincrement())
+  uuid           String             @unique @default(uuid())
+  applicationId  Int
+  storageKey     String             @unique
+  originalName   String?
+  mimeType       String
+  size           Int
+  sha256         String
+  encryptionIv   String
+  encryptionTag  String
+  status         PassportFileStatus @default(ACTIVE)
+  uploadedAt     DateTime           @default(now())
+  deletedAt      DateTime?
+  missingAt      DateTime?
+
+  application CompanyVerificationApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, status])
+  @@index([status, uploadedAt])
+}
+
+model FinanceOperation {
+  id             String                 @id @default(cuid())
+  uuid           String                 @unique @default(uuid())
+  type           FinanceOperationType
+  status         FinanceOperationStatus @default(DRAFT)
+  amount         Decimal                @db.Decimal(12, 2)
+  currency       String                 @default("RUB")
+  companyId      Int?
+  title          String
+  details        String?                @db.Text
+  requestedById  Int?
+  approvedById   Int?
+  requestedAt    DateTime?
+  approvedAt     DateTime?
+  processedAt    DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  requestedBy User?    @relation("FinanceRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  approvedBy  User?    @relation("FinanceApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([companyId, createdAt])
+  @@index([requestedById, createdAt])
+}
+
+model TelegramLinkToken {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  userId      Int
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model Subscription {
@@ -291,6 +512,7 @@ model UserProfilePreference {
   onboardingSkippedAt   DateTime?
   geolocationPromptedAt DateTime?
   profileVisibility     String   @default("PRIVATE")
+  preferredLocale       String   @default("en")
   marketingOptIn        Boolean  @default(false)
   showActivityStats     Boolean  @default(true)
   createdAt             DateTime @default(now())
@@ -482,4 +704,53 @@ model AuditEvent {
   @@index([targetUserId, createdAt])
   @@index([targetEmail])
   @@index([targetUuid])
+}
+
+model LandingLead {
+  id                Int       @id @default(autoincrement())
+  uuid              String    @unique @default(uuid())
+  name              String
+  company           String?
+  contact           String
+  business          String?
+  message           String   @db.Text
+  status            LandingLeadStatus @default(NEW)
+  source            String   @default("landing")
+  ipAddress         String?
+  userAgent         String?
+  fingerprint       String
+  spamScore         Int      @default(0)
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  processedAt       DateTime?
+
+  deliveries        NotificationDelivery[]
+
+  @@index([status, createdAt])
+  @@index([contact])
+  @@index([fingerprint, createdAt])
+}
+
+model NotificationDelivery {
+  id             String   @id @default(cuid())
+  leadId         Int
+  channel        String   @default("telegram")
+  recipientRole  String
+  recipientChatId String
+  recipientLabel String?
+  status         NotificationDeliveryStatus @default(PENDING)
+  attempts       Int      @default(0)
+  telegramMessageId Int?
+  lastError      String?  @db.Text
+  nextRetryAt    DateTime?
+  sentAt         DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lead           LandingLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([status, nextRetryAt])
+  @@index([recipientRole, createdAt])
 }

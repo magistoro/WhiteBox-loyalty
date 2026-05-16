@@ -1,8 +1,26 @@
+"use client";
+
 import { Activity, BellRing, ChartColumnIncreasing, CircleDollarSign, ClipboardList, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import type { TranslationKey } from "@/lib/i18n/dictionary";
 
 export default function AdminPortalPage() {
+  const { t } = useI18n("ru");
+  const metrics: Array<{ title: TranslationKey; value: string; delta: string; icon: typeof Users }> = [
+    { title: "admin.dashboard.activeUsers", value: "12,840", delta: "+12.4%", icon: Users },
+    { title: "admin.dashboard.revenueToday", value: "$7,230", delta: "+8.1%", icon: CircleDollarSign },
+    { title: "admin.dashboard.securityScore", value: "98.2%", delta: t("admin.dashboard.stable"), icon: ShieldCheck },
+    { title: "admin.dashboard.openIncidents", value: "03", delta: "-2", icon: BellRing },
+  ];
+  const tasks: TranslationKey[] = [
+    "admin.dashboard.task1",
+    "admin.dashboard.task2",
+    "admin.dashboard.task3",
+    "admin.dashboard.task4",
+  ];
+
   return (
     <div className="space-y-6">
       <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-cyan-500/15 via-emerald-500/10 to-sky-500/5 p-6 lg:p-8">
@@ -10,28 +28,23 @@ export default function AdminPortalPage() {
         <div className="absolute -bottom-24 right-20 h-56 w-56 rounded-full bg-emerald-400/15 blur-3xl" aria-hidden />
         <div className="relative z-10 space-y-3">
           <Badge variant="secondary" className="border-white/20 bg-white/10 text-white">
-            WhiteBox Admin Dashboard
+            {t("admin.dashboard.badge")}
           </Badge>
           <h1 className="max-w-3xl text-2xl font-semibold tracking-tight sm:text-3xl lg:text-4xl">
-            Good morning team. Here is the current platform pulse.
+            {t("admin.dashboard.title")}
           </h1>
           <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">
-            This is a visual preview dashboard. Metrics are mock for now and ready to be wired later.
+            {t("admin.dashboard.description")}
           </p>
         </div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { title: "Active users", value: "12,840", delta: "+12.4%", icon: Users },
-          { title: "Revenue today", value: "$7,230", delta: "+8.1%", icon: CircleDollarSign },
-          { title: "Security score", value: "98.2%", delta: "Stable", icon: ShieldCheck },
-          { title: "Open incidents", value: "03", delta: "-2", icon: BellRing },
-        ].map((item) => (
+        {metrics.map((item) => (
           <Card key={item.title} className="glass border-white/10">
             <CardContent className="flex items-start justify-between py-5">
               <div>
-                <p className="text-xs text-muted-foreground">{item.title}</p>
+                <p className="text-xs text-muted-foreground">{t(item.title)}</p>
                 <p className="mt-1 text-2xl font-semibold">{item.value}</p>
                 <p className="mt-1 text-xs text-emerald-300">{item.delta}</p>
               </div>
@@ -48,9 +61,9 @@ export default function AdminPortalPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <ChartColumnIncreasing className="h-4 w-4 text-cyan-300" />
-              Weekly performance trend
+              {t("admin.dashboard.weeklyTrend")}
             </CardTitle>
-            <CardDescription>Conversion, retention and partner activity overview</CardDescription>
+            <CardDescription>{t("admin.dashboard.weeklyTrendDescription")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid h-44 grid-cols-7 items-end gap-2">
@@ -69,20 +82,15 @@ export default function AdminPortalPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <ClipboardList className="h-4 w-4 text-cyan-300" />
-              Team focus today
+              {t("admin.dashboard.teamFocus")}
             </CardTitle>
-            <CardDescription>Priority board preview</CardDescription>
+            <CardDescription>{t("admin.dashboard.teamFocusDescription")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            {[
-              "Onboard 3 new partners in Food category",
-              "Review flagged payment disputes",
-              "Prepare compliance report draft",
-              "Validate new QR subscription flow",
-            ].map((task, idx) => (
+            {tasks.map((task, idx) => (
               <div key={task} className="flex items-start gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
                 <span className="mt-0.5 text-xs text-cyan-300">0{idx + 1}</span>
-                <p>{task}</p>
+                <p>{t(task)}</p>
               </div>
             ))}
           </CardContent>
@@ -94,33 +102,33 @@ export default function AdminPortalPage() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Sparkles className="h-4 w-4 text-cyan-300" />
-              Product readiness
+              {t("admin.dashboard.productReadiness")}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Admin panel structure is now desktop-first and ready for functional wiring.
+            {t("admin.dashboard.productReadinessText")}
           </CardContent>
         </Card>
         <Card className="glass border-white/10">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Activity className="h-4 w-4 text-cyan-300" />
-              System health
+              {t("admin.dashboard.systemHealth")}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            No critical alerts. API and auth modules are nominal in preview mode.
+            {t("admin.dashboard.systemHealthText")}
           </CardContent>
         </Card>
         <Card className="glass border-white/10">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Users className="h-4 w-4 text-cyan-300" />
-              Team alignment
+              {t("admin.dashboard.teamAlignment")}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Shared dashboard helps operations, compliance and support work from one view.
+            {t("admin.dashboard.teamAlignmentText")}
           </CardContent>
         </Card>
       </section>

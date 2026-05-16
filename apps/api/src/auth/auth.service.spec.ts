@@ -79,7 +79,7 @@ describe("AuthService", () => {
         password: "password12",
         role: UserRole.ADMIN,
       }),
-    ).rejects.toThrow("Administrator accounts");
+    ).rejects.toThrow("Admin workspace accounts");
   });
 
   it("register creates CLIENT and returns tokens", async () => {

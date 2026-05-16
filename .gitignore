@@ -32,7 +32,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 tmp_api_*.log
+tmp-*.log
 backups/
+storage/private/
 
 # env files (can opt-in for committing if needed)
 .env*

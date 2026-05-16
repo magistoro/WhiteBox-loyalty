@@ -8,6 +8,8 @@
 - Maps: Yandex Maps JavaScript API v3 with reactify; server-side Yandex Geocoder.
 - Deployment: Railway API service, Railway Web service, Railway PostgreSQL.
 - CI/CD: GitHub Actions PR verification and production migration gate.
+- Messaging: Telegram Bot API for landing leads and admin verification notifications.
+- Localization: lightweight RU/EN dictionary layer with cookie and DB-backed user preference.
 
 ## Main layers
 
@@ -21,7 +23,11 @@
 
 - `CLIENT`: TWA app routes and `/api/registered/*`.
 - `COMPANY`: company portal routes.
-- `ADMIN`: admin portal and `/api/admin/*`.
+- `ADMIN`: legacy full admin access.
+- `SUPER_ADMIN`: full access, including approvals and permission management.
+- `MANAGER`: operational access with finance requests that require super-admin approval.
+- `SUPPORT`: support-only access; no finance, passport review or privileged verification actions.
+- Granular user permissions can further restrict view/edit access per admin account.
 
 Authorization is layered:
 
@@ -66,6 +72,28 @@ Authorization is layered:
 1. Admin configures promo codes and referral campaign in `/admin/growth`.
 2. Promo redemption records `PromoCodeRedemption` and grants either company points or subscription activation.
 3. Referral redemption records `ReferralInvite` and rewards both users using current `ReferralCampaign` rules.
+
+### Landing leads and Telegram
+
+1. `/landing` contact form validates rate limits and spam heuristics.
+2. Valid leads are stored as `LandingLead` rows with delivery history.
+3. Telegram notifications are sent through configured recipients.
+4. Admin can inspect, update status, retry failed sends and open the lead detail page.
+
+### Company verification
+
+1. `/company/register` creates a pending company-owner user request.
+2. The user can request full identity verification or limited test access.
+3. Passport photos are encrypted at rest in private local storage and referenced from DB metadata.
+4. Admin review can approve/reject and then cleanup passport files and DB file references.
+5. Verification requests notify linked admins through Telegram direct messages.
+
+### Localization
+
+1. Middleware chooses a preferred locale from cookie, geo/headers and defaults.
+2. Logged-in user language is persisted through `UserProfilePreference.preferredLocale`.
+3. The admin shell owns the single language switcher.
+4. Dictionaries are split by domain under `src/lib/i18n/dictionaries` to keep migration to a future framework mechanical.
 
 ### Backup restore safety
 

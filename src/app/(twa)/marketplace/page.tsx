@@ -19,7 +19,8 @@ import {
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
 import { cn } from "@/lib/utils";
-import { getTwaMarketplace, type TwaMarketplace, type TwaSubscriptionPlan } from "@/lib/api/twa-client";
+import { getCachedTwaMarketplace, getTwaMarketplace, type TwaMarketplace, type TwaSubscriptionPlan } from "@/lib/api/twa-client";
+import { TwaLoadingScreen } from "@/components/twa/TwaLoadingScreen";
 
 const POPULAR_CATEGORY_SLUGS = ["coffee", "books", "auto", "barber", "beauty", "food", "fitness", "retail"];
 
@@ -35,16 +36,18 @@ function planPrice(plan: TwaSubscriptionPlan) {
 
 export default function MarketplacePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [marketplace, setMarketplace] = useState<TwaMarketplace>({
-    categories: [],
-    subscriptions: [],
-  });
+  const [marketplace, setMarketplace] = useState<TwaMarketplace>({ categories: [], subscriptions: [] });
   const [loading, setLoading] = useState(true);
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
 
   useEffect(() => {
     let ignore = false;
+    const cached = getCachedTwaMarketplace();
+    if (cached.categories.length || cached.subscriptions.length) {
+      setMarketplace(cached);
+      setLoading(false);
+    }
     void getTwaMarketplace().then((data) => {
       if (ignore) return;
       setMarketplace(data);
@@ -95,6 +98,10 @@ export default function MarketplacePage() {
     setSelectedCategory(null);
     setMinPrice("");
     setMaxPrice("");
+  }
+
+  if (loading && marketplace.categories.length === 0 && marketplace.subscriptions.length === 0) {
+    return <TwaLoadingScreen title="Loading subscriptions" subtitle="Finding active plans, filters and partner benefits." />;
   }
 
   return (
@@ -297,9 +304,9 @@ export default function MarketplacePage() {
         })}
       </ul>
 
-      {loading && (
-        <div className="flex justify-center py-12 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
+      {loading && visibleSubscriptions.length > 0 && (
+        <div className="flex justify-center py-4 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
         </div>
       )}
 

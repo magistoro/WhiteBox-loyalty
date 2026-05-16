@@ -1,8 +1,10 @@
 "use client";
 
+import { ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { WhiteBoxLogo } from "@/components/brand/WhiteBoxLogo";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -70,6 +72,21 @@ export function LoginForm() {
   return (
     <Card className="glass border-white/10">
       <CardHeader>
+        <div className="mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+          <Link href="/landing" className="flex min-w-0 items-center gap-3">
+            <WhiteBoxLogo className="h-9 w-9 shrink-0" />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-foreground">WhiteBox</span>
+              <span className="block truncate text-xs text-muted-foreground">loyalty infrastructure</span>
+            </span>
+          </Link>
+          <Link
+            href="/landing"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-white/20 hover:bg-white/[0.06] hover:text-foreground"
+          >
+            Landing <ArrowUpRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
         <CardTitle>Sign in</CardTitle>
         <CardDescription>
           Use your email and password. New users can create an account below.

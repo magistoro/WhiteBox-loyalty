@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Eye,
   EyeOff,
@@ -221,6 +221,8 @@ export default function AdminDatabasePage() {
   const [presetOpen, setPresetOpen] = useState(false);
   const [activePresetId, setActivePresetId] = useState<string>("all");
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const zoomRef = useRef(zoom);
+  const offsetRef = useRef(offset);
 
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), []);
   const visibleNodes = useMemo(
@@ -235,6 +237,14 @@ export default function AdminDatabasePage() {
     [hiddenNodes],
   );
 
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    offsetRef.current = offset;
+  }, [offset]);
+
   function setZoomAt(nextZoom: number, clientX?: number, clientY?: number) {
     const clampedZoom = clamp(Number(nextZoom.toFixed(3)), MIN_ZOOM, MAX_ZOOM);
     if (!viewportRef.current || clientX === undefined || clientY === undefined) {
@@ -244,14 +254,31 @@ export default function AdminDatabasePage() {
     const rect = viewportRef.current.getBoundingClientRect();
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
-    const worldX = (localX - offset.x) / zoom;
-    const worldY = (localY - offset.y) / zoom;
+    const currentOffset = offsetRef.current;
+    const currentZoom = zoomRef.current;
+    const worldX = (localX - currentOffset.x) / currentZoom;
+    const worldY = (localY - currentOffset.y) / currentZoom;
     setOffset({
       x: Math.round(localX - worldX * clampedZoom),
       y: Math.round(localY - worldY * clampedZoom),
     });
     setZoom(clampedZoom);
   }
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+      const delta = event.deltaY < 0 ? 0.09 : -0.09;
+      setZoomAt(zoomRef.current + delta, event.clientX, event.clientY);
+    }
+
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", handleWheel);
+  }, []);
 
   function zoomIn() {
     setZoomAt(zoom + 0.1);
@@ -418,22 +445,29 @@ export default function AdminDatabasePage() {
           </div>
           <div
             ref={viewportRef}
-            className="relative h-[74vh] min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_2px_2px,rgba(255,255,255,0.09)_1px,transparent_0)] [background-size:24px_24px] overscroll-none touch-none"
-            onMouseDown={(e) =>
-              setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y })
-            }
-            onMouseMove={(e) => {
+            className={cn(
+              "relative h-[74vh] min-h-[560px] cursor-grab overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_2px_2px,rgba(255,255,255,0.09)_1px,transparent_0)] [background-size:24px_24px] overscroll-none touch-none select-none",
+              dragStart && "cursor-grabbing",
+            )}
+            onPointerDown={(e) => {
+              if (e.pointerType === "mouse" && e.button !== 0) return;
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const currentOffset = offsetRef.current;
+              setDragStart({ x: e.clientX - currentOffset.x, y: e.clientY - currentOffset.y });
+            }}
+            onPointerMove={(e) => {
               if (!dragStart) return;
+              e.preventDefault();
               setOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
             }}
-            onMouseUp={() => setDragStart(null)}
-            onMouseLeave={() => setDragStart(null)}
-            onWheel={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const delta = e.deltaY < 0 ? 0.09 : -0.09;
-              setZoomAt(zoom + delta, e.clientX, e.clientY);
+            onPointerUp={(e) => {
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              }
+              setDragStart(null);
             }}
+            onPointerCancel={() => setDragStart(null)}
           >
             <svg className="absolute inset-0 h-full w-full">
               <g

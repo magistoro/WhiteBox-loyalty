@@ -6,8 +6,8 @@ import { motion } from "framer-motion";
 import { computeSubscriptionProgress } from "@/services/subscriptions/subscription.progress";
 import { SubscriptionProgressBar } from "@/components/subscriptions/SubscriptionProgressBar";
 import type { ApiCategory } from "@/lib/api/categories-client";
-import { getFavoriteCategorySlugs } from "@/lib/api/categories-client";
-import { getTwaDashboard, type TwaCompany, type TwaDashboard, type TwaUserSubscription } from "@/lib/api/twa-client";
+import { getCachedFavoriteCategorySlugs, getFavoriteCategorySlugs } from "@/lib/api/categories-client";
+import { getCachedTwaDashboard, getTwaDashboard, type TwaCompany, type TwaDashboard, type TwaUserSubscription } from "@/lib/api/twa-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import { Wallet, ChevronRight, Search, CircleDollarSign, Store } from "lucide-re
 import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
+import { TwaLoadingScreen } from "@/components/twa/TwaLoadingScreen";
 
 const container = {
   hidden: { opacity: 0 },
@@ -51,17 +52,32 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>([]);
   const [dashboard, setDashboard] = useState<TwaDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
   const totalBalance = dashboard?.wallet.totalBalance ?? 0;
 
   useEffect(() => {
+    let ignore = false;
+    const cachedFavorites = getCachedFavoriteCategorySlugs();
+    const cachedDashboard = getCachedTwaDashboard();
+    if (cachedFavorites.length > 0) setFavoriteSlugs(cachedFavorites);
+    if (cachedDashboard.wallet.companies.length || cachedDashboard.activeSubscriptions.length || cachedDashboard.recommendedSubscriptions.length) {
+      setDashboard(cachedDashboard);
+      setLoading(false);
+    }
+
     void (async () => {
       const [favorites, dashboardData] = await Promise.all([
         getFavoriteCategorySlugs(),
         getTwaDashboard(),
       ]);
+      if (ignore) return;
       setFavoriteSlugs(favorites);
       setDashboard(dashboardData);
+      setLoading(false);
     })();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const displayCategories = useMemo(() => {
@@ -109,6 +125,10 @@ export default function HomePage() {
   );
 
   const activeSubscriptions = dashboard?.activeSubscriptions ?? [];
+
+  if (loading && !dashboard) {
+    return <TwaLoadingScreen />;
+  }
 
   return (
     <motion.div

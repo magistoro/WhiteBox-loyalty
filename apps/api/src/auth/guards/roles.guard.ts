@@ -15,6 +15,12 @@ export type AuthedRequestUser = {
   role: UserRole;
 };
 
+const ADMIN_LIKE_ROLES = new Set<UserRole>([
+  UserRole.ADMIN,
+  UserRole.SUPER_ADMIN,
+  UserRole.MANAGER,
+]);
+
 /**
  * Requires `req.user` (set by JwtAuthMiddleware or JwtAuthGuard) and checks `UserRole`.
  */
@@ -35,7 +41,8 @@ export class RolesGuard implements CanActivate {
     if (!user) {
       throw new ForbiddenException("Missing authenticated user");
     }
-    if (!requiredRoles.includes(user.role)) {
+    const allowsLegacyAdmin = requiredRoles.includes(UserRole.ADMIN);
+    if (!requiredRoles.includes(user.role) && !(allowsLegacyAdmin && ADMIN_LIKE_ROLES.has(user.role))) {
       throw new ForbiddenException("Insufficient role");
     }
     return true;
