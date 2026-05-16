@@ -5,10 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  BadgePercent,
   BriefcaseBusiness,
   ChevronDown,
+  Compass,
   Copy,
+  Flame,
   Heart,
   MessageSquareText,
   Settings,
@@ -16,7 +17,9 @@ import {
   Sparkles,
   Star,
   Store,
+  Target,
   Ticket,
+  Trophy,
   UsersRound,
   WalletCards,
 } from "lucide-react";
@@ -24,10 +27,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
+import { TwaLoadingScreen } from "@/components/twa/TwaLoadingScreen";
 import { getStoredUser, type StoredUser } from "@/lib/api/auth-client";
-import { getFavoriteCategorySlugs, getRegisteredCategories } from "@/lib/api/categories-client";
+import { getCachedFavoriteCategorySlugs, getCachedRegisteredCategories, getFavoriteCategorySlugs, getRegisteredCategories } from "@/lib/api/categories-client";
 import {
+  getCachedTwaDashboard,
+  getCachedTwaProfile,
   getTwaDashboard,
   getTwaProfile,
   redeemTwaPromoCode,
@@ -46,6 +53,7 @@ type FavoriteCategoryChip = {
   name: string;
   icon: string;
 };
+
 
 const fallbackProfile: TwaProfile = {
   user: { uuid: "", name: "", email: "", createdAt: "" },
@@ -76,15 +84,39 @@ const fallbackProfile: TwaProfile = {
 
 export default function SettingsPage() {
   const pathname = usePathname();
-  const [user] = useState<StoredUser | null>(() => getStoredUser());
+  const [user, setUser] = useState<StoredUser | null>(null);
   const [favoriteCategories, setFavoriteCategories] = useState<FavoriteCategoryChip[]>([]);
   const [profile, setProfile] = useState<TwaProfile>(fallbackProfile);
   const [promoCode, setPromoCode] = useState("");
   const [referralCode, setReferralCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let ignore = false;
+    setUser(getStoredUser());
+    const cachedFavoriteSet = new Set(getCachedFavoriteCategorySlugs());
+    const cachedFavoriteList = getCachedRegisteredCategories()
+      .filter((category) => cachedFavoriteSet.has(category.slug))
+      .map((category) => ({ slug: category.slug, name: category.name, icon: category.icon }));
+    const cachedProfile = getCachedTwaProfile();
+    const cachedDashboard = getCachedTwaDashboard();
+    if (cachedFavoriteList.length) setFavoriteCategories(cachedFavoriteList);
+    if (cachedProfile.user.uuid || cachedDashboard.wallet.companies.length || cachedDashboard.activeSubscriptions.length) {
+      setProfile({
+        ...cachedProfile,
+        stats: {
+          ...cachedProfile.stats,
+          totalBalance: cachedProfile.stats.totalBalance || cachedDashboard.wallet.totalBalance,
+          partnerCount: cachedProfile.stats.partnerCount || cachedDashboard.wallet.companies.length,
+          activeSubscriptions: cachedProfile.stats.activeSubscriptions || cachedDashboard.activeSubscriptions.length,
+          favoriteCategories: cachedProfile.stats.favoriteCategories || cachedFavoriteList.length,
+        },
+      });
+      setLoading(false);
+    }
+
     void (async () => {
       const [allCategories, favoriteSlugs, dashboard, freshProfile] = await Promise.all([
         getRegisteredCategories(),
@@ -92,6 +124,7 @@ export default function SettingsPage() {
         getTwaDashboard(),
         getTwaProfile(),
       ]);
+      if (ignore) return;
       const favoriteSet = new Set(favoriteSlugs);
       const favoriteList = allCategories
         .filter((c) => favoriteSet.has(c.slug))
@@ -108,7 +141,11 @@ export default function SettingsPage() {
           activityScore: freshProfile.stats.activityScore || Math.min(100, Math.round((dashboard.wallet.totalBalance / 5000) * 55 + dashboard.wallet.companies.length * 8 + dashboard.activeSubscriptions.length * 12)),
         },
       });
+      setLoading(false);
     })();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -131,6 +168,35 @@ export default function SettingsPage() {
   );
 
   const activityLabel = profile.stats.activityScore >= 75 ? "Gold rhythm" : profile.stats.activityScore >= 40 ? "Silver rhythm" : "Starter rhythm";
+  const activityTone = profile.stats.activityScore >= 75 ? "Loyalty pro" : profile.stats.activityScore >= 40 ? "Momentum is building" : "First steps";
+  const scoreProgress = Math.max(4, Math.min(100, profile.stats.activityScore));
+  const nextActions = useMemo(() => {
+    const actions: Array<{ href: string; label: string; detail: string; icon: typeof Heart; done: boolean }> = [
+      {
+        href: "/settings/favorites",
+        label: "Choose favorites",
+        detail: "Tune recommendations",
+        icon: Heart,
+        done: profile.stats.favoriteCategories > 0,
+      },
+      {
+        href: "/companies",
+        label: "Visit partners",
+        detail: "Start earning points",
+        icon: Store,
+        done: profile.stats.partnerCount > 0,
+      },
+      {
+        href: "/marketplace",
+        label: "Try subscriptions",
+        detail: "Unlock partner perks",
+        icon: Ticket,
+        done: profile.stats.activeSubscriptions > 0,
+      },
+    ];
+    return actions.sort((a, b) => Number(a.done) - Number(b.done));
+  }, [profile.stats.activeSubscriptions, profile.stats.favoriteCategories, profile.stats.partnerCount]);
+  const primaryAction = nextActions.find((action) => !action.done) ?? nextActions[0];
 
   async function redeemPromo() {
     if (!promoCode.trim()) return;
@@ -168,6 +234,10 @@ export default function SettingsPage() {
     setMessage("Referral code copied.");
   }
 
+  if (loading) {
+    return <TwaLoadingScreen title="Loading profile" subtitle="Preparing your activity, favorites and rewards." />;
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -175,7 +245,7 @@ export default function SettingsPage() {
       transition={{ duration: 0.25 }}
       className="min-h-full px-4 pb-4 pt-6"
     >
-      <header id="section-profile-header" className="mb-5 grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+      <header id="section-profile-header" className="mb-6 grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
         <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-primary/20 text-2xl font-bold text-primary ring-2 ring-primary/30" aria-hidden>
           {user?.name ? initials(user.name) : "?"}
         </div>
@@ -192,26 +262,99 @@ export default function SettingsPage() {
       {message && <div className="mb-3 rounded-2xl border border-white/10 bg-muted/10 px-4 py-3 text-sm">{message}</div>}
 
       <div className="grid gap-3">
-        <Card className="glass overflow-hidden border-white/10">
-          <CardContent className="space-y-4 p-4">
-            <div className="flex items-center justify-between gap-3">
+        <Card className="glass relative overflow-hidden border-white/10 bg-slate-950/70">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(255,255,255,0.12),transparent_30%),radial-gradient(circle_at_88%_0%,rgba(34,211,238,0.11),transparent_34%)]" />
+          <CardContent className="relative space-y-4 px-4 pb-4 pt-1.5">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs text-muted-foreground">Activity level</p>
-                <p className="text-3xl font-bold tracking-tight tabular-nums">{profile.stats.activityScore}</p>
+                <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
+                  <Flame className="h-3.5 w-3.5" />
+                  WhiteBox pulse
+                </p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight">{activityTone}</h2>
+                <p className="mt-1 max-w-[13rem] text-xs leading-relaxed text-muted-foreground">
+                  {profile.stats.activityScore > 0
+                    ? "Your loyalty profile is learning from activity, points and subscriptions."
+                    : "Start with favorites, partners or your first subscription to wake up the profile."}
+                </p>
               </div>
-              <div className="flex h-12 items-center rounded-2xl bg-primary/15 px-3 text-primary">
-                <Sparkles className="mr-1.5 h-5 w-5" />
-                <span className="text-sm font-semibold">{activityLabel}</span>
+
+              <div className="relative flex h-24 w-24 shrink-0 items-center justify-center">
+                <div className="absolute inset-0 rounded-full bg-primary/10 blur-xl" />
+                <div
+                  className="relative flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-[conic-gradient(var(--primary)_var(--score),rgba(255,255,255,0.1)_0)] p-1 shadow-[0_18px_42px_rgba(0,0,0,0.35)]"
+                  style={{ "--score": `${scoreProgress}%` } as React.CSSProperties}
+                >
+                  <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-slate-950 text-center">
+                    <span className="text-2xl font-bold tabular-nums">{profile.stats.activityScore}</span>
+                    <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">pulse</span>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, profile.stats.activityScore)}%` }} />
+
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "partners", value: profile.stats.partnerCount, icon: Store },
+                { label: "subs", value: profile.stats.activeSubscriptions, icon: WalletCards },
+                { label: "favorites", value: profile.stats.favoriteCategories, icon: Heart },
+              ].map((metric) => {
+                const Icon = metric.icon;
+                return (
+                  <div key={metric.label} className="rounded-2xl border border-white/10 bg-black/20 px-2.5 py-3 text-center">
+                    <Icon className="mx-auto mb-1 h-4 w-4 text-primary" />
+                    <p className="text-lg font-bold tabular-nums">{metric.value}</p>
+                    <p className="text-[10px] text-muted-foreground">{metric.label}</p>
+                  </div>
+                );
+              })}
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-2xl bg-black/20 p-3"><p className="text-lg font-bold">{profile.stats.partnerCount}</p><p className="text-[11px] text-muted-foreground">partners</p></div>
-              <div className="rounded-2xl bg-black/20 p-3"><p className="text-lg font-bold">{profile.stats.activeSubscriptions}</p><p className="text-[11px] text-muted-foreground">subs</p></div>
-              <div className="rounded-2xl bg-black/20 p-3"><p className="text-lg font-bold">{profile.stats.favoriteCategories}</p><p className="text-[11px] text-muted-foreground">favorites</p></div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold">Next best steps</p>
+                  <p className="text-xs text-muted-foreground">Complete small actions to raise your pulse.</p>
+                </div>
+                <Badge variant="secondary" className="shrink-0 gap-1 bg-primary/15 text-primary">
+                  <Trophy className="h-3 w-3" />
+                  {activityLabel}
+                </Badge>
+              </div>
+              <div className="grid gap-2">
+                {nextActions.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <Link
+                      key={action.href}
+                      href={action.href}
+                      className={cn(
+                        "group flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-colors",
+                        action.done
+                          ? "border-emerald-300/20 bg-emerald-500/10 text-emerald-100"
+                          : "border-white/10 bg-slate-950/40 hover:border-white/20 hover:bg-white/[0.06]",
+                      )}
+                    >
+                      <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", action.done ? "bg-emerald-400/15 text-emerald-200" : "bg-primary/15 text-primary")}>
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold">{action.label}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{action.done ? "Done" : action.detail}</span>
+                      </span>
+                      {action.done ? <Target className="h-4 w-4 shrink-0 text-emerald-200" /> : <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-muted-foreground transition-transform group-hover:translate-x-0.5" />}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
+
+            <Button asChild className="w-full rounded-2xl">
+              <Link href={primaryAction.href}>
+                <Compass className="mr-2 h-4 w-4" />
+                Boost profile
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 

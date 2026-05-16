@@ -18,6 +18,8 @@ Important principles:
 - `src/lib/api/categories-client.ts` - categories and favorite categories.
 - `src/lib/api/admin-client.ts` - admin users, companies, categories, subscriptions, growth, audit and backups.
 - `src/lib/api/twa-client.ts` - TWA profile, dashboard, marketplace, companies, wallet, map/history/subscriptions, QR, promo/referral.
+- `src/lib/i18n/*` - locale detection, persistence and portable dictionaries.
+- `src/lib/telegram/*` - Telegram Bot API delivery, proxy support, webhook parsing and admin account linking.
 
 ## Admin API surface
 
@@ -58,6 +60,19 @@ All `/api/admin/*` routes require `ADMIN`.
 | `/api/admin/backups/:backupId/restore` | POST | Restore snapshot with confirmation |
 | `/api/admin/backups/:backupId` | DELETE | Delete snapshot |
 | `/api/admin/backups/restore-status` | GET | Live restore state |
+| `/api/admin/company-verifications` | GET | Search/paginate company verification requests |
+| `/api/admin/company-verifications/:uuid` | GET/PATCH | Review and update a verification request |
+| `/api/admin/company-verifications/:uuid/approve` | POST | Approve verified company access |
+| `/api/admin/company-verifications/:uuid/reject` | POST | Reject request and cleanup verification files |
+| `/api/admin/company-verifications/passport-storage/sync` | POST | Reconcile encrypted passport files with DB records |
+| `/api/admin/leads` | GET | Search/paginate landing leads |
+| `/api/admin/leads/:uuid` | GET/PATCH | Lead detail and processing notes |
+| `/api/admin/leads/retry-due` | POST | Retry due Telegram lead deliveries |
+| `/api/admin/telegram/status` | GET | Current admin Telegram link status |
+| `/api/admin/telegram-link-token` | POST | Create one-time Telegram deep-link token |
+| `/api/admin/menu-notifications` | GET | Navigation notification counters |
+| `/api/admin/finance/*` | GET/POST | Finance operation drafts and approval flow |
+| `/api/admin/users/:uuid/permissions` | GET/PUT | Granular admin permission settings |
 
 ## Registered API surface
 
@@ -91,6 +106,18 @@ All `/api/registered/*` routes require `CLIENT`.
 - `RegisteredService`: DB-backed TWA read models, profile preferences, favorites, promo/referral redemption, QR and subscription activation.
 - `MaintenanceStateService`: restore progress state machine.
 - `MaintenanceGuard`: API lock during restore.
+- Landing lead services: contact intake, duplicate/spam checks, Telegram delivery history and retries.
+- Company onboarding services: user-first company registration, identity verification modes, encrypted passport file lifecycle and admin review.
+- Telegram services: Bot API proxy support, direct-message admin linking and webhook command handling.
+- i18n services: locale cookie, user preference persistence and structured translation dictionaries.
+
+## Security and privacy responsibilities
+
+- Passwords remain write-only and are never exposed through admin UI.
+- Email changes use secure request links rather than direct admin edits.
+- Passport photos are stored encrypted in private local storage, then removed after approve/reject cleanup.
+- Support users are restricted away from finance, passport review and privileged verification actions.
+- Critical admin actions write audit records where applicable.
 
 ## Map/geocoder responsibilities
 

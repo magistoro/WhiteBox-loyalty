@@ -51,3 +51,42 @@ npm run db:seed
 ```
 
 Use `db:migrate:dev` only for local development. Production uses `db:migrate` through CI/CD.
+
+## Verification
+
+Run the full local quality gate before opening a PR:
+
+```bash
+npm run ci:verify
+```
+
+This runs Prisma generation/validation, web unit tests, ESLint, Next build, Nest build and API unit tests.
+
+For targeted web checks during UI/i18n or Telegram work:
+
+```bash
+npm run test:web -- i18n menu-notifications telegram
+```
+
+## Telegram local development
+
+Telegram Bot API calls can use a local proxy when direct access is unstable:
+
+```env
+TELEGRAM_PROXY_URL=http://127.0.0.1:10809
+```
+
+Useful checks:
+
+```bash
+npm run telegram:ping
+npm run telegram:poll:local
+```
+
+Never commit bot tokens. Keep them in `.env` or hosting secrets only.
+
+## Private local storage
+
+Company verification passport files are encrypted and stored in private local storage. These files are local runtime data and must not be committed.
+
+The admin verification screen includes a storage sync action to reconcile encrypted files with database records.

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
 import type { ApiCategory } from "@/lib/api/categories-client";
-import { getFavoriteCategorySlugs } from "@/lib/api/categories-client";
-import { getTwaCompanies, type TwaCompany } from "@/lib/api/twa-client";
+import { getCachedFavoriteCategorySlugs, getFavoriteCategorySlugs } from "@/lib/api/categories-client";
+import { getCachedTwaCompanies, getTwaCompanies, type TwaCompany } from "@/lib/api/twa-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import {
 import { CategoryChipStrip } from "@/components/twa/CategoryChipStrip";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
+import { TwaLoadingScreen } from "@/components/twa/TwaLoadingScreen";
 
 const POPULAR_CATEGORY_SLUGS = ["coffee", "books", "auto", "barber", "beauty", "food", "fitness", "retail"];
 
@@ -70,6 +71,13 @@ export default function CompaniesPage() {
 
   useEffect(() => {
     let ignore = false;
+    const cachedCompanies = getCachedTwaCompanies();
+    const cachedFavorites = getCachedFavoriteCategorySlugs();
+    if (cachedCompanies.length) {
+      setCompanies(cachedCompanies);
+      setLoading(false);
+    }
+    if (cachedFavorites.length) setFavoriteSlugs(cachedFavorites);
     void Promise.all([getTwaCompanies(), getFavoriteCategorySlugs()]).then(([apiCompanies, favorites]) => {
       if (ignore) return;
       setCompanies(apiCompanies);
@@ -111,6 +119,10 @@ export default function CompaniesPage() {
       return true;
     });
   }, [companies, searchQuery, selectedCategory]);
+
+  if (loading && companies.length === 0) {
+    return <TwaLoadingScreen title="Loading partners" subtitle="Syncing company cards, categories and loyalty levels." />;
+  }
 
   return (
     <motion.div
@@ -296,7 +308,7 @@ export default function CompaniesPage() {
         })}
       </ul>
 
-      {loading && <p className="py-12 text-center text-sm text-muted-foreground">Loading partners...</p>}
+      {loading && filteredCompanies.length > 0 && <p className="py-4 text-center text-xs text-muted-foreground">Refreshing partners...</p>}
       {!loading && filteredCompanies.length === 0 && (
         <p className="py-12 text-center text-sm text-muted-foreground">No partners match your filters.</p>
       )}

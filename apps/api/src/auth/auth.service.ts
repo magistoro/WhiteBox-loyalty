@@ -191,9 +191,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async register(dto: RegisterDto) {
     const role = dto.role ?? UserRole.CLIENT;
-    if (role === UserRole.ADMIN) {
+    const publicRegistrationBlockedRoles = new Set<UserRole>([
+      UserRole.ADMIN,
+      UserRole.SUPER_ADMIN,
+      UserRole.MANAGER,
+      UserRole.SUPPORT,
+    ]);
+    if (publicRegistrationBlockedRoles.has(role)) {
       throw new BadRequestException(
-        "Administrator accounts cannot be created via public registration",
+        "Admin workspace accounts cannot be created via public registration",
       );
     }
     const email = dto.email.trim().toLowerCase();

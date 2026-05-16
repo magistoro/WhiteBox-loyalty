@@ -22,12 +22,20 @@
 | `/settings/favorites` | Favorite categories | CLIENT |
 | `/settings/business`, `/settings/partnership`, `/settings/reviews` | Profile subpages/placeholders | CLIENT |
 | `/help/*` | FAQ/contact/privacy | Public |
+| `/landing` | Marketing landing and Telegram-backed lead form | Public |
+| `/company/register` | Company onboarding and verification request | Public |
 | `/company/*` | Company portal | COMPANY/ADMIN |
 | `/admin` | Admin dashboard | ADMIN |
 | `/admin/users`, `/admin/users/[uuid]` | User operations | ADMIN |
+| `/admin/users/[uuid]/permissions` | Granular user permissions | SUPER_ADMIN |
 | `/admin/categories` | Category CRUD | ADMIN |
 | `/admin/companies`, `/admin/companies/[uuid]` | Company accounts/profile/locations/subscriptions | ADMIN |
 | `/admin/companies/[uuid]/clients` | Company client analytics | ADMIN |
+| `/admin/company-verifications`, `/admin/company-verifications/[uuid]` | Verified company intake review | ADMIN/MANAGER |
+| `/admin/leads`, `/admin/leads/[uuid]` | Landing lead inbox and Telegram delivery history | ADMIN/MANAGER |
+| `/admin/telegram` | Admin Telegram direct-message link | ADMIN |
+| `/admin/finance` | Finance operations and approval workflow | MANAGER/SUPER_ADMIN |
+| `/admin/support` | Support-only workspace | SUPPORT |
 | `/admin/subscriptions` | Subscription analytics | ADMIN |
 | `/admin/growth` | Promo/referral management | ADMIN |
 | `/admin/database` | Prisma schema visualizer | ADMIN |
@@ -41,6 +49,13 @@
 - `src/app/(twa)/layout.tsx`: mobile viewport, transitions and bottom nav.
 - `src/app/(portal)/layout.tsx`: desktop portal sidebar and content grid.
 
+## Localization
+
+- Admin navigation owns the single RU/EN language switcher.
+- Page copy is stored in structured dictionaries under `src/lib/i18n/dictionaries`.
+- Locale is persisted in the `wb_locale` cookie and, for authorized users, in `UserProfilePreference.preferredLocale`.
+- New admin pages should not add local language toggles. Add keys to the relevant dictionary namespace and consume them through `useI18n`.
+
 ## TWA UX state
 
 - QR element is only on `/scan`; it was removed from global/profile surfaces.
@@ -48,6 +63,9 @@
 - Favorite categories can be selected in onboarding/settings and are capped at 10 in UI/API validation.
 - Marketplace and partner filters use compact quick chips and extended filter panels.
 - Partner filters respect multi-category companies and hide empty categories where appropriate.
+- TWA API reads use a short-lived client TTL cache for dashboard, marketplace, partners, history, map and profile data. Pages hydrate from the cached snapshot first, then refresh from API when needed, so users do not see zero balances or empty cards during navigation.
+- First-load states use `TwaLoadingScreen` skeletons instead of raw empty/fallback values.
+- `TwaStaleDataNudge` appears after 10 minutes on one TWA route and gently suggests a refresh.
 
 ## Map UX
 
@@ -69,6 +87,9 @@
 - Growth admin supports promo search/sort/edit/pause/activate and referral campaign settings.
 - Database map has grouped chips, icons, presets, hide/show eye buttons, pan and wheel zoom.
 - Backups UI supports snapshot creation, download, restore confirmation, deletion and live restore statuses.
+- Mobile admin uses a compact top bar, bottom primary navigation and drawer-based full navigation while preserving the desktop sidebar.
+- Admin menu badges show unresolved company verification counters with `20+` cap.
+- Telegram page shows linked state and reconnect flow instead of asking for a link when already connected.
 
 ## Key components
 

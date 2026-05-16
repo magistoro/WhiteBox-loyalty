@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bus, Car, ChevronRight, Crosshair, Filter, Footprints, LocateFixed, MapPin, Search } from "lucide-react";
-import { getActiveTwaSubscriptions, getTwaCompanies, type TwaCompany, type TwaUserSubscription } from "@/lib/api/twa-client";
+import { getActiveTwaSubscriptions, getCachedActiveTwaSubscriptions, getCachedTwaCompanies, getTwaCompanies, type TwaCompany, type TwaUserSubscription } from "@/lib/api/twa-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -679,6 +679,10 @@ function MapPageContent() {
 
   useEffect(() => {
     let ignore = false;
+    const cachedCompanies = getCachedTwaCompanies();
+    const cachedSubscriptions = getCachedActiveTwaSubscriptions();
+    if (cachedCompanies.length) setCompanies(cachedCompanies);
+    if (cachedSubscriptions.length) setActiveSubscriptions(cachedSubscriptions);
     void Promise.all([getTwaCompanies(), getActiveTwaSubscriptions()]).then(([data, subscriptions]) => {
       if (ignore) return;
       setCompanies(data);

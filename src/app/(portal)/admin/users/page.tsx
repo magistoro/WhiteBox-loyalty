@@ -11,11 +11,12 @@ import { SelectField } from "@/components/ui/select-field";
 import {
   adminCreateAccount,
   adminListUsers,
+  type AdminRole,
   type AdminUserRow,
   type AdminUsersResponse,
 } from "@/lib/api/admin-client";
 
-type Role = "CLIENT" | "COMPANY" | "ADMIN";
+type Role = AdminRole;
 type UserSort = "name" | "email" | "role" | "status" | "createdAt";
 
 export default function AdminUsersPage() {
@@ -111,6 +112,9 @@ export default function AdminUsersPage() {
               <option value="CLIENT">CLIENT</option>
               <option value="COMPANY">COMPANY</option>
               <option value="ADMIN">ADMIN</option>
+              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+              <option value="MANAGER">MANAGER</option>
+              <option value="SUPPORT">SUPPORT</option>
             </SelectField>
             <Button
               onClick={onCreate}

@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Archive, ArrowDownLeft, ArrowUpRight, History as HistoryIcon } from "lucide-react";
-import { getTwaHistory, type TwaHistory, type TwaUserSubscription } from "@/lib/api/twa-client";
+import { getCachedTwaHistory, getTwaHistory, type TwaHistory, type TwaUserSubscription } from "@/lib/api/twa-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import { cn } from "@/lib/utils";
+import { TwaLoadingScreen } from "@/components/twa/TwaLoadingScreen";
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -47,14 +48,16 @@ const item = {
 };
 
 export default function HistoryPage() {
-  const [history, setHistory] = useState<TwaHistory>({
-    transactions: [],
-    archivedSubscriptions: [],
-  });
+  const [history, setHistory] = useState<TwaHistory>({ transactions: [], archivedSubscriptions: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let ignore = false;
+    const cached = getCachedTwaHistory();
+    if (cached.transactions.length || cached.archivedSubscriptions.length) {
+      setHistory(cached);
+      setLoading(false);
+    }
     void getTwaHistory().then((data) => {
       if (ignore) return;
       setHistory(data);
@@ -64,6 +67,10 @@ export default function HistoryPage() {
       ignore = true;
     };
   }, []);
+
+  if (loading && history.transactions.length === 0 && history.archivedSubscriptions.length === 0) {
+    return <TwaLoadingScreen title="Loading history" subtitle="Syncing recent activity and archived subscriptions." />;
+  }
 
   return (
     <motion.div

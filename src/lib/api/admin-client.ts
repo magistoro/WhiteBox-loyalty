@@ -1,10 +1,12 @@
 ﻿import { getAccessToken } from "./auth-client";
 
+export type AdminRole = "CLIENT" | "COMPANY" | "ADMIN" | "SUPER_ADMIN" | "MANAGER" | "SUPPORT";
+
 export type AdminUserRow = {
   uuid: string;
   email: string;
   name: string;
-  role: "CLIENT" | "COMPANY" | "ADMIN";
+  role: AdminRole;
   accountStatus: "ACTIVE" | "FROZEN_PENDING_DELETION";
   createdAt: string;
 };
@@ -47,6 +49,169 @@ export type AdminAuditResponse = {
   page: number;
   limit: number;
   totalPages: number;
+};
+
+export type AdminLandingLeadStatus = "NEW" | "IN_PROGRESS" | "CLOSED" | "SPAM";
+
+export type AdminNotificationDelivery = {
+  id: string;
+  leadId: number;
+  channel: string;
+  recipientRole: string;
+  recipientChatId: string;
+  recipientLabel: string | null;
+  status: "PENDING" | "SENT" | "FAILED";
+  attempts: number;
+  telegramMessageId: number | null;
+  lastError: string | null;
+  nextRetryAt: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminLandingLead = {
+  id: number;
+  uuid: string;
+  name: string;
+  company: string | null;
+  contact: string;
+  business: string | null;
+  message: string;
+  status: AdminLandingLeadStatus;
+  source: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  fingerprint: string;
+  spamScore: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  processedAt: string | null;
+  deliveries: AdminNotificationDelivery[];
+};
+
+export type AdminLandingLeadsResponse = {
+  items: AdminLandingLead[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+};
+
+export type AdminCompanyVerificationStatus = "DRAFT" | "SUBMITTED" | "REVIEWING" | "APPROVED" | "REJECTED";
+export type AdminCompanyEmploymentType = "SELF_EMPLOYED" | "INDIVIDUAL_ENTREPRENEUR";
+export type AdminIdentityVerificationMode = "FULL" | "DEFERRED";
+
+export type AdminCompanyVerificationApplication = {
+  id: number;
+  uuid: string;
+  companyId: number | null;
+  employmentType: AdminCompanyEmploymentType;
+  identityVerificationMode: AdminIdentityVerificationMode;
+  status: AdminCompanyVerificationStatus;
+  contactName: string;
+  contactEmail: string;
+  contactTelegram: string | null;
+  companyName: string;
+  businessCategory: string;
+  legalFirstName: string | null;
+  legalMiddleName: string | null;
+  legalLastName: string | null;
+  birthDate: string | null;
+  legalFullName: string;
+  legalInn: string;
+  legalOgrnip: string | null;
+  legalRegistrationRegion: string | null;
+  payoutBankName: string | null;
+  payoutBik: string | null;
+  payoutAccount: string | null;
+  payoutCorrespondentAccount: string | null;
+  payoutCardLast4: string | null;
+  verificationDeferralReason: string | null;
+  passportLast4: string | null;
+  passportDataDeletedAt: string | null;
+  consentAcceptedAt: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  adminNotifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  passportFiles?: Array<{
+    uuid: string;
+    originalName: string | null;
+    mimeType: string;
+    size: number;
+    sha256: string;
+    uploadedAt: string;
+    status: "ACTIVE" | "DELETED" | "MISSING";
+  }>;
+  company: {
+    id: number;
+    slug: string;
+    name: string;
+    isActive: boolean;
+    verificationStatus: AdminCompanyVerificationStatus;
+    passportVerificationStatus: AdminCompanyVerificationStatus;
+    identityVerificationMode?: AdminIdentityVerificationMode;
+    identityVerificationCompleted?: boolean;
+    verificationSubmittedAt?: string | null;
+    verificationReviewedAt?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+  } | null;
+};
+
+export type AdminCompanyVerificationsResponse = {
+  items: AdminCompanyVerificationApplication[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  summary: Partial<Record<AdminCompanyVerificationStatus, number>>;
+};
+
+export type AdminPermissionScope =
+  | "USERS"
+  | "COMPANIES"
+  | "COMPANY_VERIFICATIONS"
+  | "FINANCE"
+  | "SUPPORT"
+  | "AUDIT"
+  | "DATABASE"
+  | "TELEGRAM"
+  | "SETTINGS";
+
+export type AdminUserPermissionRow = {
+  scope: AdminPermissionScope;
+  canView: boolean;
+  canEdit: boolean;
+  canApprove: boolean;
+};
+
+export type AdminUserPermissionsResponse = {
+  user: { uuid: string; name: string; email: string; role: AdminRole };
+  scopes: AdminPermissionScope[];
+  permissions: AdminUserPermissionRow[];
+};
+
+export type AdminFinanceOperation = {
+  id: string;
+  uuid: string;
+  type: "PAYOUT_REQUEST" | "PAYOUT_APPROVAL" | "MANUAL_ADJUSTMENT" | "REFUND";
+  status: "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "PAID" | "CANCELED";
+  amount: string;
+  currency: string;
+  title: string;
+  details: string | null;
+  requestedAt: string | null;
+  approvedAt: string | null;
+  processedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  company: { id: number; slug: string; name: string } | null;
+  requestedBy: { id: number; uuid: string; email: string; name: string } | null;
+  approvedBy: { id: number; uuid: string; email: string; name: string } | null;
 };
 
 export type AdminBackupItem = {
@@ -314,7 +479,7 @@ export type AdminUserDetail = {
   telegramId: string | null;
   name: string;
   email: string;
-  role: "CLIENT" | "COMPANY" | "ADMIN";
+  role: AdminRole;
   accountStatus: "ACTIVE" | "FROZEN_PENDING_DELETION";
   emailVerifiedAt: string | null;
   deletionScheduledAt: string | null;
@@ -425,7 +590,7 @@ export type AdminUserDetail = {
 
 export type AdminUpdateUserInput = {
   name?: string;
-  role?: "CLIENT" | "COMPANY" | "ADMIN";
+  role?: AdminRole;
   accountStatus?: "ACTIVE" | "FROZEN_PENDING_DELETION";
   emailVerifiedAt?: string | null;
   createdAt?: string | null;
@@ -473,7 +638,7 @@ export async function adminCreateAccount(input: {
   name: string;
   email: string;
   password: string;
-  role: "CLIENT" | "COMPANY" | "ADMIN";
+  role: AdminRole;
 }) {
   const res = await fetch(`${apiBase()}/admin/accounts`, {
     method: "POST",
@@ -1113,3 +1278,214 @@ export async function adminDownloadBackup(backupId: string) {
 
   return { ok: true as const };
 }
+
+export async function adminListLandingLeads(options?: {
+  query?: string;
+  status?: AdminLandingLeadStatus | "ALL";
+  page?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams();
+  if (options?.query) params.set("query", options.query);
+  if (options?.status && options.status !== "ALL") params.set("status", options.status);
+  if (options?.page) params.set("page", String(options.page));
+  if (options?.limit) params.set("limit", String(options.limit));
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await fetch(`/api/admin/landing-leads${suffix}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch landing leads" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminLandingLeadsResponse };
+}
+
+export async function adminGetLandingLead(uuid: string) {
+  const res = await fetch(`/api/admin/landing-leads/${uuid}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch landing lead" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminLandingLead };
+}
+
+export async function adminUpdateLandingLead(uuid: string, input: {
+  status: AdminLandingLeadStatus;
+  notes?: string;
+}) {
+  const res = await fetch(`/api/admin/landing-leads/${uuid}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to update landing lead" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminLandingLead };
+}
+
+export async function adminRetryLandingLead(uuid: string) {
+  const res = await fetch(`/api/admin/landing-leads/${uuid}/retry`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to retry landing lead notification" };
+  }
+  return { ok: true as const, data: (await res.json()) as { ok: true; result: { sent: number; failed: number } } };
+}
+
+export async function adminRetryDueLandingLeads() {
+  const res = await fetch("/api/admin/landing-leads/retry-due", {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to process landing lead retry queue" };
+  }
+  return {
+    ok: true as const,
+    data: (await res.json()) as { ok: true; result: { processed: number } },
+  };
+}
+
+export async function adminListCompanyVerifications(options?: {
+  query?: string;
+  status?: AdminCompanyVerificationStatus | "ALL";
+  page?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams();
+  if (options?.query) params.set("query", options.query);
+  if (options?.status && options.status !== "ALL") params.set("status", options.status);
+  if (options?.page) params.set("page", String(options.page));
+  if (options?.limit) params.set("limit", String(options.limit));
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await fetch(`/api/admin/company-verifications${suffix}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch company verification requests" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminCompanyVerificationsResponse };
+}
+
+export async function adminGetCompanyVerification(uuid: string) {
+  const res = await fetch(`/api/admin/company-verifications/${uuid}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch company verification request" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminCompanyVerificationApplication };
+}
+
+export async function adminUpdateCompanyVerification(uuid: string, input: {
+  status: Exclude<AdminCompanyVerificationStatus, "DRAFT">;
+}) {
+  const res = await fetch(`/api/admin/company-verifications/${uuid}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to update company verification request" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminCompanyVerificationApplication };
+}
+
+export async function adminSyncPassportStorage() {
+  const res = await fetch("/api/admin/company-verifications/passport-storage/sync", {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to sync passport storage" };
+  }
+  return {
+    ok: true as const,
+    data: (await res.json()) as {
+      ok: true;
+      result: {
+        activeDbRecords: number;
+        encryptedFilesOnDisk: number;
+        missingFiles: number;
+        orphanFilesDeleted: number;
+      };
+    },
+  };
+}
+
+export async function adminGetUserPermissions(uuid: string) {
+  const res = await fetch(`/api/admin/users/${uuid}/permissions`, { headers: authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch user permissions" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminUserPermissionsResponse };
+}
+
+export async function adminUpdateUserPermissions(uuid: string, permissions: AdminUserPermissionRow[]) {
+  const res = await fetch(`/api/admin/users/${uuid}/permissions`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify({ permissions }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to update user permissions" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminUserPermissionsResponse };
+}
+
+export async function adminListFinanceOperations() {
+  const res = await fetch("/api/admin/finance-operations", { headers: authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to fetch finance operations" };
+  }
+  return { ok: true as const, data: (await res.json()) as { items: AdminFinanceOperation[] } };
+}
+
+export async function adminCreateFinanceOperation(input: {
+  title: string;
+  amount: string;
+  currency?: string;
+  details?: string;
+}) {
+  const res = await fetch("/api/admin/finance-operations", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to create finance operation" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminFinanceOperation };
+}
+
+export async function adminUpdateFinanceOperation(uuid: string, status: AdminFinanceOperation["status"]) {
+  const res = await fetch(`/api/admin/finance-operations/${uuid}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false as const, message: data.message ?? "Failed to update finance operation" };
+  }
+  return { ok: true as const, data: (await res.json()) as AdminFinanceOperation };
+}
+
+

@@ -1,27 +1,46 @@
-import { decodeJwt } from "jose";
+﻿import { decodeJwt } from "jose";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { detectPreferredLocale, LOCALE_COOKIE } from "@/lib/i18n/shared";
 
 const ACCESS_COOKIE = "wb_access_token";
-const ROLES = new Set(["CLIENT", "ADMIN", "COMPANY"]);
+const LOCALE_MAX_AGE = 60 * 60 * 24 * 365;
+const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN", "MANAGER", "SUPPORT"]);
+const ROLES = new Set(["CLIENT", "ADMIN", "SUPER_ADMIN", "MANAGER", "SUPPORT", "COMPANY"]);
+
+function responseWithLocale(request: NextRequest, response = NextResponse.next()) {
+  if (!request.cookies.get(LOCALE_COOKIE)?.value) {
+    const locale = detectPreferredLocale({
+      countryCode:
+        request.headers.get("x-vercel-ip-country") ??
+        request.headers.get("cf-ipcountry") ??
+        request.headers.get("x-country-code"),
+      acceptLanguage: request.headers.get("accept-language"),
+    });
+    response.cookies.set(LOCALE_COOKIE, locale, {
+      path: "/",
+      maxAge: LOCALE_MAX_AGE,
+      sameSite: "lax",
+    });
+  }
+  return response;
+}
 
 function redirectToLogin(request: NextRequest) {
   const login = new URL("/login", request.url);
   login.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
-  return NextResponse.redirect(login);
+  return responseWithLocale(request, NextResponse.redirect(login));
 }
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
-  /** Public auth pages — no token required */
-  if (path === "/login" || path === "/register") {
-    return NextResponse.next();
+  if (path === "/login" || path === "/register" || path === "/company/register") {
+    return responseWithLocale(request);
   }
 
-  /** Help & legal — readable without auth */
   if (path.startsWith("/help")) {
-    return NextResponse.next();
+    return responseWithLocale(request);
   }
 
   const token = request.cookies.get(ACCESS_COOKIE)?.value;
@@ -31,11 +50,6 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    /*
-     * The web middleware is a UX router, not the security boundary.
-     * API guards still verify JWT signatures before returning private data.
-     * Decoding here avoids production lockouts when web/api env secrets drift.
-     */
     const payload = decodeJwt(token);
     const role = typeof payload.role === "string" ? payload.role : undefined;
     const expiresAt = typeof payload.exp === "number" ? payload.exp * 1000 : 0;
@@ -44,32 +58,31 @@ export async function middleware(request: NextRequest) {
       return redirectToLogin(request);
     }
 
-    /** Partner / admin portals */
     if (path.startsWith("/admin")) {
-      if (role !== "ADMIN") {
-        return NextResponse.redirect(new URL("/", request.url));
+      if (!ADMIN_ROLES.has(role)) {
+        return responseWithLocale(request, NextResponse.redirect(new URL("/", request.url)));
       }
-      return NextResponse.next();
-    }
-    if (path.startsWith("/company")) {
-      if (role !== "COMPANY" && role !== "ADMIN") {
-        return NextResponse.redirect(new URL("/", request.url));
+      if (role === "SUPPORT" && !path.startsWith("/admin/support")) {
+        return responseWithLocale(request, NextResponse.redirect(new URL("/admin/support", request.url)));
       }
-      return NextResponse.next();
+      return responseWithLocale(request);
     }
 
-    /**
-     * Main TWA (Home, Map, History, Profile, Scan, loyalty flows) — **CLIENT only**.
-     * Bottom nav: /, /map, /history, /settings; FAB /scan; plus companies, marketplace, wallet.
-     */
-    if (role === "CLIENT") {
-      return NextResponse.next();
+    if (path.startsWith("/company")) {
+      if (role !== "COMPANY" && !ADMIN_ROLES.has(role)) {
+        return responseWithLocale(request, NextResponse.redirect(new URL("/", request.url)));
+      }
+      return responseWithLocale(request);
     }
-    if (role === "ADMIN") {
-      return NextResponse.redirect(new URL("/admin", request.url));
+
+    if (role === "CLIENT") {
+      return responseWithLocale(request);
+    }
+    if (ADMIN_ROLES.has(role)) {
+      return responseWithLocale(request, NextResponse.redirect(new URL("/admin", request.url)));
     }
     if (role === "COMPANY") {
-      return NextResponse.redirect(new URL("/company", request.url));
+      return responseWithLocale(request, NextResponse.redirect(new URL("/company", request.url)));
     }
 
     return redirectToLogin(request);
@@ -78,15 +91,12 @@ export async function middleware(request: NextRequest) {
   }
 }
 
-/**
- * Run on app routes only (not static assets handled by Next).
- * Includes all TWA client surfaces + auth pages + portals.
- */
 export const config = {
   matcher: [
     "/",
     "/login",
     "/register",
+    "/company/register",
     "/map",
     "/history",
     "/settings/:path*",

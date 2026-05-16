@@ -30,10 +30,11 @@ import {
   adminReactivateUser,
   adminRequestEmailChange,
   adminUpdateUser,
+  type AdminRole,
   type AdminUserDetail,
 } from "@/lib/api/admin-client";
 
-type Role = "CLIENT" | "COMPANY" | "ADMIN";
+type Role = AdminRole;
 type AccountStatus = "ACTIVE" | "FROZEN_PENDING_DELETION";
 
 type FormState = {
@@ -265,6 +266,18 @@ export default function AdminUserProfilePage() {
             <ShieldCheck className="h-4 w-4" />
             Force logout
           </Button>
+          <Button asChild variant="secondary">
+            <Link href="/admin/telegram">
+              <Link2 className="h-4 w-4" />
+              Connect Telegram
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/admin/users/${user.uuid}/permissions`}>
+              <ShieldCheck className="h-4 w-4" />
+              Access settings
+            </Link>
+          </Button>
           <Button variant="destructive" onClick={onDelete} disabled={deleting}>
             <Trash2 className="h-4 w-4" />
             Delete user
@@ -295,6 +308,9 @@ export default function AdminUserProfilePage() {
                 <option value="CLIENT">CLIENT</option>
                 <option value="COMPANY">COMPANY</option>
                 <option value="ADMIN">ADMIN</option>
+                <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                <option value="MANAGER">MANAGER</option>
+                <option value="SUPPORT">SUPPORT</option>
               </SelectField>
             </div>
             <div className="space-y-1">

@@ -12,9 +12,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import {
   activateTwaSubscription,
+  getCachedTwaMarketplace,
   getTwaMarketplace,
   type TwaSubscriptionPlan,
 } from "@/lib/api/twa-client";
+import { TwaLoadingScreen } from "@/components/twa/TwaLoadingScreen";
 
 function formatPlanPrice(plan: TwaSubscriptionPlan) {
   const unit = plan.renewalUnit || "month";
@@ -50,6 +52,11 @@ export default function SubscriptionDetailPage() {
 
   useEffect(() => {
     let ignore = false;
+    const cached = getCachedTwaMarketplace();
+    if (cached.subscriptions.length) {
+      setPlans(cached.subscriptions);
+      setLoading(false);
+    }
     void getTwaMarketplace().then((data) => {
       if (ignore) return;
       setPlans(data.subscriptions);
@@ -82,12 +89,8 @@ export default function SubscriptionDetailPage() {
     );
   }
 
-  if (loading) {
-    return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex min-h-full items-center justify-center px-6">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </motion.div>
-    );
+  if (loading && plans.length === 0) {
+    return <TwaLoadingScreen title="Loading subscription" subtitle="Preparing plan details and activation status." />;
   }
 
   if (!subscription) {

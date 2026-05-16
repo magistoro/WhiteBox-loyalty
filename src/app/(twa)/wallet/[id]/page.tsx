@@ -4,14 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Award, ChevronRight, CircleDollarSign, Clock3, Loader2, MapPin, Navigation, Sparkles } from "lucide-react";
-import { getTwaCompanies, getTwaMarketplace, type TwaCompany, type TwaSubscriptionPlan } from "@/lib/api/twa-client";
+import { AlertCircle, ArrowLeft, Award, ChevronRight, CircleDollarSign, Clock3, MapPin, Navigation, Sparkles } from "lucide-react";
+import { getCachedTwaCompanies, getCachedTwaMarketplace, getTwaCompanies, getTwaMarketplace, type TwaCompany, type TwaSubscriptionPlan } from "@/lib/api/twa-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import { cn } from "@/lib/utils";
+import { TwaLoadingScreen } from "@/components/twa/TwaLoadingScreen";
 
 const DEFAULT_WORKING_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
@@ -72,6 +73,13 @@ export default function WalletPage() {
 
   useEffect(() => {
     let ignore = false;
+    const cachedCompanies = getCachedTwaCompanies();
+    const cachedMarketplace = getCachedTwaMarketplace();
+    if (cachedCompanies.length) {
+      setCompanies(cachedCompanies);
+      setPlans(cachedMarketplace.subscriptions);
+      setLoading(false);
+    }
     void Promise.all([getTwaCompanies(), getTwaMarketplace()]).then(([apiCompanies, marketplace]) => {
       if (ignore) return;
       setCompanies(apiCompanies);
@@ -93,12 +101,8 @@ export default function WalletPage() {
     [company, plans],
   );
 
-  if (loading) {
-    return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex min-h-full items-center justify-center px-6">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </motion.div>
-    );
+  if (loading && companies.length === 0) {
+    return <TwaLoadingScreen title="Loading partner card" subtitle="Syncing balances, locations and subscriptions." />;
   }
 
   if (!company) {

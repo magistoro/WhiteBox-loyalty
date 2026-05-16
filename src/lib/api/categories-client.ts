@@ -1,4 +1,5 @@
 import { getAccessToken } from "./auth-client";
+import { clearTwaCache, readTwaCache, writeTwaCache } from "./twa-cache";
 
 export type ApiCategory = {
   id: number;
@@ -21,22 +22,53 @@ function authHeaders(): HeadersInit {
   };
 }
 
+const CATEGORY_CACHE_TTL_MS = 10 * 60 * 1000;
+const FAVORITES_CACHE_TTL_MS = 2 * 60 * 1000;
+const CATEGORIES_KEY = "GET:/registered/categories";
+const FAVORITES_KEY = "GET:/registered/favorite-categories";
+
+export function getCachedRegisteredCategories(): ApiCategory[] {
+  return readTwaCache<ApiCategory[]>(CATEGORIES_KEY, []).data;
+}
+
 export async function getRegisteredCategories(): Promise<ApiCategory[]> {
-  const res = await fetch(`${apiBase()}/registered/categories`, {
-    method: "GET",
-    headers: authHeaders(),
-  });
-  if (!res.ok) return [];
-  return (await res.json()) as ApiCategory[];
+  const cached = readTwaCache<ApiCategory[]>(CATEGORIES_KEY, []);
+  if (cached.hit && !cached.expired) return cached.data;
+
+  try {
+    const res = await fetch(`${apiBase()}/registered/categories`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) return cached.hit ? cached.data : [];
+    const data = (await res.json()) as ApiCategory[];
+    writeTwaCache(CATEGORIES_KEY, data, CATEGORY_CACHE_TTL_MS);
+    return data;
+  } catch {
+    return cached.hit ? cached.data : [];
+  }
+}
+
+export function getCachedFavoriteCategorySlugs(): string[] {
+  return readTwaCache<string[]>(FAVORITES_KEY, []).data;
 }
 
 export async function getFavoriteCategorySlugs(): Promise<string[]> {
-  const res = await fetch(`${apiBase()}/registered/favorite-categories`, {
-    method: "GET",
-    headers: authHeaders(),
-  });
-  if (!res.ok) return [];
-  return (await res.json()) as string[];
+  const cached = readTwaCache<string[]>(FAVORITES_KEY, []);
+  if (cached.hit && !cached.expired) return cached.data;
+
+  try {
+    const res = await fetch(`${apiBase()}/registered/favorite-categories`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) return cached.hit ? cached.data : [];
+    const data = (await res.json()) as string[];
+    writeTwaCache(FAVORITES_KEY, data, FAVORITES_CACHE_TTL_MS);
+    return data;
+  } catch {
+    return cached.hit ? cached.data : [];
+  }
 }
 
 export async function saveFavoriteCategorySlugs(categorySlugs: string[]) {
@@ -51,5 +83,7 @@ export async function saveFavoriteCategorySlugs(categorySlugs: string[]) {
     return { ok: false as const, message };
   }
   const data = (await res.json()) as { favoriteCategorySlugs: string[] };
+  clearTwaCache();
+  writeTwaCache(FAVORITES_KEY, data.favoriteCategorySlugs, FAVORITES_CACHE_TTL_MS);
   return { ok: true as const, data };
 }

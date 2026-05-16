@@ -1,4 +1,5 @@
 import { getAccessToken } from "./auth-client";
+import { clearTwaCache, readTwaCache, writeTwaCache } from "./twa-cache";
 import type { ApiCategory } from "./categories-client";
 
 export type TwaCompanyLevel = {
@@ -176,17 +177,33 @@ function authHeaders(): HeadersInit {
   };
 }
 
-async function getJson<T>(path: string, fallback: T): Promise<T> {
+const TWA_CACHE_TTL_MS = 2 * 60 * 1000;
+const TWA_CACHE_STALE_MS = 15 * 60 * 1000;
+
+function cacheKey(path: string) {
+  return `GET:${path}`;
+}
+
+function readCachedJson<T>(path: string, fallback: T, staleMs = TWA_CACHE_STALE_MS) {
+  return readTwaCache<T>(cacheKey(path), fallback, staleMs).data;
+}
+
+async function getJson<T>(path: string, fallback: T, ttlMs = TWA_CACHE_TTL_MS): Promise<T> {
+  const cached = readTwaCache<T>(cacheKey(path), fallback, TWA_CACHE_STALE_MS);
+  if (cached.hit && !cached.expired) return cached.data;
+
   try {
     const res = await fetch(`${apiBase()}${path}`, {
       method: "GET",
       headers: authHeaders(),
       cache: "no-store",
     });
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
+    if (!res.ok) return cached.hit ? cached.data : fallback;
+    const data = (await res.json()) as T;
+    writeTwaCache(cacheKey(path), data, ttlMs);
+    return data;
   } catch {
-    return fallback;
+    return cached.hit ? cached.data : fallback;
   }
 }
 
@@ -228,32 +245,55 @@ async function putJson<T>(path: string, body: unknown, fallbackMessage: string) 
   }
 }
 
+const dashboardFallback: TwaDashboard = {
+  wallet: { totalBalance: 0, companies: [] },
+  activeSubscriptions: [],
+  recommendedSubscriptions: [],
+  favoriteCategories: [],
+};
+
+export function getCachedTwaDashboard() {
+  return readCachedJson<TwaDashboard>("/registered/dashboard", dashboardFallback);
+}
+
 export function getTwaDashboard() {
-  return getJson<TwaDashboard>("/registered/dashboard", {
-    wallet: { totalBalance: 0, companies: [] },
-    activeSubscriptions: [],
-    recommendedSubscriptions: [],
-    favoriteCategories: [],
-  });
+  return getJson<TwaDashboard>("/registered/dashboard", dashboardFallback);
+}
+
+const marketplaceFallback: TwaMarketplace = {
+  categories: [],
+  subscriptions: [],
+};
+
+export function getCachedTwaMarketplace(categorySlug?: string) {
+  const suffix = categorySlug ? `?category=${encodeURIComponent(categorySlug)}` : "";
+  return readCachedJson<TwaMarketplace>(`/registered/marketplace${suffix}`, marketplaceFallback);
 }
 
 export function getTwaMarketplace(categorySlug?: string) {
   const suffix = categorySlug ? `?category=${encodeURIComponent(categorySlug)}` : "";
-  return getJson<TwaMarketplace>(`/registered/marketplace${suffix}`, {
-    categories: [],
-    subscriptions: [],
-  });
+  return getJson<TwaMarketplace>(`/registered/marketplace${suffix}`, marketplaceFallback);
+}
+
+export function getCachedTwaCompanies() {
+  return readCachedJson<TwaCompany[]>("/registered/companies", []);
 }
 
 export function getTwaCompanies() {
   return getJson<TwaCompany[]>("/registered/companies", []);
 }
 
+const walletFallback: TwaWallet = {
+  totalBalance: 0,
+  companies: [],
+};
+
+export function getCachedTwaWallet() {
+  return readCachedJson<TwaWallet>("/registered/wallet", walletFallback);
+}
+
 export function getTwaWallet() {
-  return getJson<TwaWallet>("/registered/wallet", {
-    totalBalance: 0,
-    companies: [],
-  });
+  return getJson<TwaWallet>("/registered/wallet", walletFallback);
 }
 
 export function getTwaQr() {
@@ -263,44 +303,64 @@ export function getTwaQr() {
   });
 }
 
+const profileFallback: TwaProfile = {
+  user: { uuid: "", name: "", email: "", createdAt: "" },
+  preferences: {
+    onboardingCompletedAt: null,
+    onboardingSkippedAt: null,
+    geolocationPromptedAt: null,
+    profileVisibility: "PRIVATE",
+    marketingOptIn: false,
+    showActivityStats: true,
+  },
+  stats: {
+    totalBalance: 0,
+    partnerCount: 0,
+    activeSubscriptions: 0,
+    favoriteCategories: 0,
+    activityScore: 0,
+  },
+  favoriteCategories: [],
+  referral: {
+    code: "",
+    title: "Invite a friend",
+    inviterBonusPoints: 0,
+    invitedBonusPoints: 0,
+    isActive: false,
+  },
+};
+
+export function getCachedTwaProfile() {
+  return readCachedJson<TwaProfile>("/registered/profile", profileFallback);
+}
+
 export function getTwaProfile() {
-  return getJson<TwaProfile>("/registered/profile", {
-    user: { uuid: "", name: "", email: "", createdAt: "" },
-    preferences: {
-      onboardingCompletedAt: null,
-      onboardingSkippedAt: null,
-      geolocationPromptedAt: null,
-      profileVisibility: "PRIVATE",
-      marketingOptIn: false,
-      showActivityStats: true,
-    },
-    stats: {
-      totalBalance: 0,
-      partnerCount: 0,
-      activeSubscriptions: 0,
-      favoriteCategories: 0,
-      activityScore: 0,
-    },
-    favoriteCategories: [],
-    referral: {
-      code: "",
-      title: "Invite a friend",
-      inviterBonusPoints: 0,
-      invitedBonusPoints: 0,
-      isActive: false,
-    },
-  });
+  return getJson<TwaProfile>("/registered/profile", profileFallback);
+}
+
+const historyFallback: TwaHistory = {
+  transactions: [],
+  archivedSubscriptions: [],
+};
+
+export function getCachedTwaHistory() {
+  return readCachedJson<TwaHistory>("/registered/history", historyFallback);
 }
 
 export function getTwaHistory() {
-  return getJson<TwaHistory>("/registered/history", {
-    transactions: [],
-    archivedSubscriptions: [],
-  });
+  return getJson<TwaHistory>("/registered/history", historyFallback);
+}
+
+export function getCachedActiveTwaSubscriptions() {
+  return readCachedJson<TwaUserSubscription[]>("/registered/subscriptions/active", []);
 }
 
 export function getActiveTwaSubscriptions() {
   return getJson<TwaUserSubscription[]>("/registered/subscriptions/active", []);
+}
+
+export function getCachedArchivedTwaSubscriptions() {
+  return readCachedJson<TwaUserSubscription[]>("/registered/subscriptions/archive", []);
 }
 
 export function getArchivedTwaSubscriptions() {
@@ -318,27 +378,37 @@ export async function activateTwaSubscription(uuid: string) {
     const message = Array.isArray(data.message) ? data.message.join(", ") : data.message ?? "Failed";
     return { ok: false as const, message };
   }
-  return { ok: true as const, data: (await res.json()) as TwaUserSubscription };
+  const data = (await res.json()) as TwaUserSubscription;
+  clearTwaCache();
+  return { ok: true as const, data };
 }
 
-export function completeTwaOnboarding() {
-  return postJson<{ success: true }>("/registered/onboarding/complete", {}, "Failed to complete onboarding");
+export async function completeTwaOnboarding() {
+  const result = await postJson<{ success: true }>("/registered/onboarding/complete", {}, "Failed to complete onboarding");
+  if (result.ok) clearTwaCache();
+  return result;
 }
 
-export function skipTwaOnboarding() {
-  return postJson<{ success: true }>("/registered/onboarding/skip", {}, "Failed to skip onboarding");
+export async function skipTwaOnboarding() {
+  const result = await postJson<{ success: true }>("/registered/onboarding/skip", {}, "Failed to skip onboarding");
+  if (result.ok) clearTwaCache();
+  return result;
 }
 
-export function updateTwaProfilePreferences(input: {
+export async function updateTwaProfilePreferences(input: {
   profileVisibility?: "PRIVATE" | "FRIENDS" | "PUBLIC";
   marketingOptIn?: boolean;
   showActivityStats?: boolean;
 }) {
-  return putJson<TwaProfile["preferences"]>("/registered/profile/preferences", input, "Failed to update preferences");
+  const result = await putJson<TwaProfile["preferences"]>("/registered/profile/preferences", input, "Failed to update preferences");
+  if (result.ok) clearTwaCache();
+  return result;
 }
 
-export function redeemTwaPromoCode(code: string) {
-  return postJson<{ type: "POINTS" | "SUBSCRIPTION"; message: string }>("/registered/promo/redeem", { code }, "Failed to redeem promo code");
+export async function redeemTwaPromoCode(code: string) {
+  const result = await postJson<{ type: "POINTS" | "SUBSCRIPTION"; message: string }>("/registered/promo/redeem", { code }, "Failed to redeem promo code");
+  if (result.ok) clearTwaCache();
+  return result;
 }
 
 export function getTwaReferral() {
@@ -351,6 +421,10 @@ export function getTwaReferral() {
   });
 }
 
-export function redeemTwaReferralCode(code: string) {
-  return postJson<{ success: true; message: string }>("/registered/referral/redeem", { code }, "Failed to redeem referral code");
+export async function redeemTwaReferralCode(code: string) {
+  const result = await postJson<{ success: true; message: string }>("/registered/referral/redeem", { code }, "Failed to redeem referral code");
+  if (result.ok) clearTwaCache();
+  return result;
 }
+
+export { clearTwaCache };
