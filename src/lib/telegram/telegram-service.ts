@@ -14,22 +14,6 @@ export type LandingLead = {
   message: string;
 };
 
-export function parseTelegramRecipients(rawRecipients?: string): TelegramRecipient[] {
-  return (rawRecipients || "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .map((value) => {
-      const [chatId, label, role] = value.split(":");
-      return {
-        chatId: chatId.trim(),
-        label: label?.trim() || undefined,
-        role: role?.trim() || label?.trim() || "owner",
-      };
-    })
-    .filter((recipient) => recipient.chatId.length > 0);
-}
-
 export function renderLandingLeadMessage(lead: LandingLead) {
   return [
     "Новая заявка с лендинга WhiteBox",

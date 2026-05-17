@@ -1,12 +1,18 @@
-jest.mock("@/lib/prisma", () => ({ prisma: {} }));
+const mockPrisma = {
+  user: {
+    findMany: jest.fn(),
+  },
+};
+
+jest.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 jest.mock("@/lib/telegram/telegram-service", () => ({
   buildLeadInlineKeyboard: jest.fn(),
-  parseTelegramRecipients: jest.fn(() => []),
   renderLandingLeadHtmlMessage: jest.fn(() => "message"),
   sendTelegramMessage: jest.fn(),
 }));
 
 import {
+  adminTelegramRecipients,
   assertHumanTiming,
   buildLeadFingerprint,
   calculateSpamScore,
@@ -66,5 +72,53 @@ describe("landing lead helpers", () => {
     expect(nextRetryAt(1, now).toISOString()).toBe("2026-05-16T00:01:00.000Z");
     expect(nextRetryAt(2, now).toISOString()).toBe("2026-05-16T00:05:00.000Z");
     expect(nextRetryAt(3, now).toISOString()).toBe("2026-05-16T00:15:00.000Z");
+  });
+
+  it("builds Telegram recipients from active admins in the database", async () => {
+    mockPrisma.user.findMany.mockResolvedValueOnce([
+      {
+        id: 25,
+        email: "maksimpastuhov77@gmail.com",
+        name: "Max",
+        role: "SUPER_ADMIN",
+        telegramId: BigInt(1348887499),
+      },
+      {
+        id: 30,
+        email: "manager@whitebox.test",
+        name: null,
+        role: "MANAGER",
+        telegramId: BigInt(1000000001),
+      },
+    ]);
+
+    await expect(adminTelegramRecipients()).resolves.toEqual([
+      {
+        chatId: "1348887499",
+        role: "super_admin",
+        label: "Max",
+      },
+      {
+        chatId: "1000000001",
+        role: "manager",
+        label: "manager@whitebox.test",
+      },
+    ]);
+
+    expect(mockPrisma.user.findMany).toHaveBeenCalledWith({
+      where: {
+        role: { in: ["ADMIN", "SUPER_ADMIN", "MANAGER"] },
+        telegramId: { not: null },
+        accountStatus: "ACTIVE",
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        telegramId: true,
+      },
+      orderBy: { id: "asc" },
+    });
   });
 });

@@ -3,7 +3,6 @@ import type { LandingLeadStatus, NotificationDeliveryStatus } from "@prisma/clie
 import { prisma } from "@/lib/prisma";
 import {
   buildLeadInlineKeyboard,
-  parseTelegramRecipients,
   renderLandingLeadHtmlMessage,
   sendTelegramMessage,
   type LandingLead,
@@ -114,8 +113,30 @@ export function publicLeadUrl(leadUuid: string) {
   }
 }
 
-export function notificationRecipients() {
-  return parseTelegramRecipients(process.env.TELEGRAM_CONTACT_RECIPIENTS || process.env.TELEGRAM_OWNER_CHAT_ID);
+export async function adminTelegramRecipients(): Promise<TelegramRecipient[]> {
+  const admins = await prisma.user.findMany({
+    where: {
+      role: { in: ["ADMIN", "SUPER_ADMIN", "MANAGER"] },
+      telegramId: { not: null },
+      accountStatus: "ACTIVE",
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      telegramId: true,
+    },
+    orderBy: { id: "asc" },
+  });
+
+  return admins
+    .filter((admin) => admin.telegramId)
+    .map((admin) => ({
+      chatId: admin.telegramId!.toString(),
+      role: admin.role.toLowerCase(),
+      label: admin.name || admin.email || `admin:${admin.id}`,
+    }));
 }
 
 export async function isDuplicateLead(
@@ -276,7 +297,7 @@ export async function retryLeadNotifications(leadUuid: string) {
         label: delivery.recipientLabel ?? undefined,
         role: delivery.recipientRole,
       }))
-    : notificationRecipients();
+    : await adminTelegramRecipients();
 
   await prisma.notificationDelivery.deleteMany({ where: { leadId: lead.id, status: "FAILED" } });
 

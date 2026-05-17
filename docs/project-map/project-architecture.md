@@ -77,7 +77,7 @@ Authorization is layered:
 
 1. `/landing` contact form validates rate limits and spam heuristics.
 2. Valid leads are stored as `LandingLead` rows with delivery history.
-3. Telegram notifications are sent through configured recipients.
+3. Telegram notifications are sent to active `ADMIN`, `SUPER_ADMIN` and `MANAGER` users with linked `User.telegramId`.
 4. Admin can inspect, update status, retry failed sends and open the lead detail page.
 
 ### Company verification
@@ -86,7 +86,7 @@ Authorization is layered:
 2. The user can request full identity verification or limited test access.
 3. Passport photos are encrypted at rest in private local storage and referenced from DB metadata.
 4. Admin review can approve/reject and then cleanup passport files and DB file references.
-5. Verification requests notify linked admins through Telegram direct messages.
+5. Verification requests notify linked admins through Telegram direct messages using the same DB-backed recipient model.
 
 ### Localization
 

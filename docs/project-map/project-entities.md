@@ -39,7 +39,7 @@ Growth:
 
 ## Enum highlights
 
-- `UserRole`: `CLIENT | COMPANY | ADMIN`
+- `UserRole`: `CLIENT | COMPANY | ADMIN | SUPER_ADMIN | MANAGER | SUPPORT`
 - `AccountStatus`: `ACTIVE | FROZEN_PENDING_DELETION`
 - `SubscriptionStatus`: `ACTIVE | EXPIRED | CANCELED`
 - `LoyaltyTransactionType`: `EARN | SPEND`
@@ -77,6 +77,14 @@ Points are not universal. They belong to a company:
 - `UserCompany.balance` is the current company balance.
 - `LoyaltyTransaction.companyId` records the company for every earn/spend event.
 - Promo/referral point rewards must resolve to a company and then update the same ledger/balance system.
+
+## Telegram admin notifications
+
+Telegram delivery is routed through database users:
+
+- `User.telegramId` stores the linked private Telegram chat id.
+- Active `ADMIN`, `SUPER_ADMIN` and `MANAGER` users receive landing lead and company verification notifications.
+- Environment variables configure the bot and webhooks only; they do not define human notification recipients.
 
 ## Location model
 

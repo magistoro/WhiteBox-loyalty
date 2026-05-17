@@ -3,7 +3,7 @@ import {
   assertHumanTiming,
   createLandingLead,
   hasHoneypotValue,
-  notificationRecipients,
+  adminTelegramRecipients,
   notifyLandingLead,
   parseLandingLeadPayload,
 } from "@/lib/leads/landing-leads";
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     const notification = await notifyLandingLead({
       leadRecord,
-      recipients: notificationRecipients(),
+      recipients: await adminTelegramRecipients(),
     });
 
     return NextResponse.json({
