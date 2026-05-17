@@ -1,19 +1,11 @@
 import {
   buildLeadInlineKeyboard,
   escapeTelegramHtml,
-  parseTelegramRecipients,
   redactProxyUrl,
   renderLandingLeadHtmlMessage,
 } from "./telegram-service";
 
 describe("telegram service helpers", () => {
-  it("parses chat id, label and role", () => {
-    expect(parseTelegramRecipients("134:owner:admin, 777:support")).toEqual([
-      { chatId: "134", label: "owner", role: "admin" },
-      { chatId: "777", label: "support", role: "support" },
-    ]);
-  });
-
   it("escapes telegram HTML", () => {
     expect(escapeTelegramHtml("A&B <tag>")).toBe("A&amp;B &lt;tag&gt;");
   });
