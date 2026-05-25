@@ -48,6 +48,18 @@ export type AuthTokensResponse = {
   user: StoredUser;
 };
 
+const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN", "MANAGER", "SUPPORT"]);
+
+export function authenticatedDestination(user: Pick<StoredUser, "role">, requestedNext: string | null) {
+  if (ADMIN_ROLES.has(user.role)) {
+    return user.role === "SUPPORT" ? "/admin/support" : "/admin";
+  }
+  if (user.role === "COMPANY") return "/company";
+  return requestedNext && requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+    ? requestedNext
+    : "/";
+}
+
 function apiBase(): string {
   const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
   return base.replace(/\/$/, "");

@@ -235,6 +235,40 @@ describe("AuthService", () => {
     ).rejects.toThrow("Telegram account is not linked to WhiteBox");
   });
 
+  it("rotates a valid refresh token and issues a restored session", async () => {
+    prisma.refreshToken.findFirst.mockResolvedValue({
+      id: "old-refresh",
+      user: {
+        id: 21,
+        uuid: "21212121-2121-4121-8121-212121212121",
+        email: "returning@user.com",
+        name: "Returning User",
+        role: UserRole.CLIENT,
+        passwordHash: "hash",
+        telegramId: null,
+        phoneNumber: null,
+        phoneVerifiedAt: null,
+        emailVerifiedAt: null,
+        accountStatus: "ACTIVE",
+        deletionScheduledAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    prisma.refreshToken.update.mockResolvedValue({ id: "old-refresh" });
+    prisma.refreshToken.create.mockResolvedValue({ id: "new-refresh" });
+
+    const result = await service.refresh({ refreshToken: "stored-refresh-token" });
+
+    expect(result.accessToken).toBe("access.jwt.token");
+    expect(result.refreshToken).not.toBe("stored-refresh-token");
+    expect(prisma.refreshToken.update).toHaveBeenCalledWith({
+      where: { id: "old-refresh" },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(prisma.refreshToken.create).toHaveBeenCalled();
+  });
+
   it("issueTokens disables onboarding when favorites exist", async () => {
     prisma.userFavoriteCategory.count.mockResolvedValue(2);
     prisma.refreshToken.create.mockResolvedValue({ id: "rt2" });
