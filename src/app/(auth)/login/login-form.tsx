@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { WhiteBoxLogo } from "@/components/brand/WhiteBoxLogo";
@@ -16,8 +16,25 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { FrozenAccountDialog } from "@/components/auth/FrozenAccountDialog";
-import { login, setStoredSession } from "@/lib/api/auth-client";
+import {
+  authenticatedDestination,
+  login,
+  loginWithTelegramMiniApp,
+  refreshStoredSession,
+  setStoredSession,
+  type AuthTokensResponse,
+} from "@/lib/api/auth-client";
 import { useI18n } from "@/lib/i18n/use-i18n";
+
+type TelegramWindow = Window & {
+  Telegram?: {
+    WebApp?: {
+      initData?: string;
+      ready?: () => void;
+      expand?: () => void;
+    };
+  };
+};
 
 export function LoginForm() {
   const router = useRouter();
@@ -27,9 +44,73 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [restoringSession, setRestoringSession] = useState(true);
   const [frozenOpen, setFrozenOpen] = useState(false);
   const [pendingNext, setPendingNext] = useState("/");
   const [frozenMeta, setFrozenMeta] = useState<{ name: string; at: string | null } | null>(null);
+  const requestedNext = searchParams.get("next");
+
+  function enterSession(data: AuthTokensResponse) {
+    const destination = authenticatedDestination(data.user, requestedNext);
+    setStoredSession(data);
+    window.dispatchEvent(new Event("whitebox:auth-updated"));
+
+    if (data.user.accountStatus === "FROZEN_PENDING_DELETION") {
+      setPendingNext(destination);
+      setFrozenMeta({
+        name: data.user.name,
+        at: data.user.deletionScheduledAt ?? null,
+      });
+      setFrozenOpen(true);
+      return;
+    }
+
+    router.replace(destination);
+    router.refresh();
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const webApp = (window as TelegramWindow).Telegram?.WebApp;
+      webApp?.ready?.();
+      webApp?.expand?.();
+      const initData = webApp?.initData?.trim();
+      let telegramError: string | null = null;
+
+      if (initData) {
+        const result = await loginWithTelegramMiniApp(initData);
+        if (cancelled) return;
+        if ("accessToken" in result && result.accessToken) {
+          enterSession(result);
+          return;
+        }
+        telegramError = "message" in result ? result.message : "automatic sign-in failed";
+      }
+
+      const restored = await refreshStoredSession();
+      if (cancelled) return;
+      if (restored) {
+        enterSession(restored);
+        return;
+      }
+      if (telegramError) {
+        setError(`Telegram: ${telegramError}`);
+      }
+      setRestoringSession(false);
+    })().catch((err: unknown) => {
+      if (cancelled) return;
+      setError(err instanceof Error ? err.message : t("client.auth.loginFailed"));
+      setRestoringSession(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // Session restoration navigates away; rerun only if the destination changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedNext, router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,15 +122,7 @@ export function LoginForm() {
         setError("message" in data ? data.message : t("client.auth.loginFailed"));
         return;
       }
-      const next = searchParams.get("next");
-      const safe =
-        data.user.role === "ADMIN"
-          ? "/admin"
-          : data.user.role === "COMPANY"
-            ? "/company"
-            : next && next.startsWith("/") && !next.startsWith("//")
-              ? next
-              : "/";
+      const safe = authenticatedDestination(data.user, requestedNext);
 
       if (data.user.accountStatus === "FROZEN_PENDING_DELETION") {
         setStoredSession(data);
@@ -115,6 +188,14 @@ export function LoginForm() {
               {error}
             </p>
           )}
+          {restoringSession && (
+            <p
+              className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2 text-sm text-cyan-100"
+              role="status"
+            >
+              Восстанавливаем сессию WhiteBox...
+            </p>
+          )}
           <div className="space-y-2">
             <label className="text-sm text-muted-foreground" htmlFor="email">
               {t("client.auth.email")}
@@ -125,6 +206,7 @@ export function LoginForm() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={restoringSession}
               required
               className="glass border-white/10"
             />
@@ -139,6 +221,7 @@ export function LoginForm() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              disabled={restoringSession}
               required
               minLength={8}
               className="glass border-white/10"
@@ -146,8 +229,8 @@ export function LoginForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-3 pt-6">
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? t("client.auth.signingIn") : t("client.auth.signIn")}
+          <Button type="submit" className="w-full" disabled={loading || restoringSession}>
+            {loading || restoringSession ? t("client.auth.signingIn") : t("client.auth.signIn")}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
             {t("client.auth.noAccount")}{" "}
