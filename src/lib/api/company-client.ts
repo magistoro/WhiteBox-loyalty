@@ -89,12 +89,50 @@ export type CompanyClientDetail = CompanyClient & {
     description: string | null;
     occurredAt: string;
   }>;
+  recentSubscriptionRedemptions: Array<{
+    uuid: string;
+    source: "SUBSCRIPTION" | "BUNDLE";
+    quantity: number;
+    note: string | null;
+    redeemedAt: string;
+    benefit: string;
+    benefitUuid: string;
+    planName: string;
+    processedBy: string;
+  }>;
   activeSubscriptions: Array<{
     id: number;
+    status: string;
+    activatedAt: string;
+    expiresAt: string | null;
+    willAutoRenew: boolean;
+    redemptions: Array<{
+      uuid: string;
+      quantity: number;
+      note: string | null;
+      redeemedAt: string;
+      benefit: string;
+      benefitUuid: string;
+      processedBy: string;
+    }>;
     subscription: CompanySubscription;
   }>;
   activeBundleSubscriptions: Array<{
     id: number;
+    uuid: string;
+    status: string;
+    activatedAt: string;
+    expiresAt: string | null;
+    willAutoRenew: boolean;
+    redemptions: Array<{
+      uuid: string;
+      quantity: number;
+      note: string | null;
+      redeemedAt: string;
+      benefit: string;
+      benefitUuid: string;
+      processedBy: string;
+    }>;
     bundle: CompanyClubBundle;
   }>;
 };
@@ -126,7 +164,19 @@ export type CompanySubscription = {
     windowValue: number;
     windowUnit: EntitlementWindow;
     isActive: boolean;
+    redemption?: EntitlementRedemptionState;
   }>;
+};
+
+export type EntitlementRedemptionState = {
+  unlimited: boolean;
+  used: number | null;
+  allowance: number | null;
+  remaining: number | null;
+  canRedeem: boolean;
+  windowStartedAt: string | null;
+  windowEndsAt: string | null;
+  lastRedeemedAt: string | null;
 };
 
 export type CompanyClubBundleParticipant = {
@@ -144,6 +194,7 @@ export type CompanyClubBundleParticipant = {
   approvedAt: string | null;
   rejectedAt: string | null;
   sortOrder: number;
+  redemption?: EntitlementRedemptionState;
 };
 
 export type CompanyClubBundle = {
@@ -428,8 +479,21 @@ export function updateCompanyEntitlement(
   });
 }
 
+export type CompanyRedemptionResult = {
+  benefit: string;
+  bundle?: string;
+  unlimited: boolean;
+  used: number | null;
+  allowance: number | null;
+  remaining: number | null;
+  windowUnit: EntitlementWindow;
+  windowValue: number;
+  windowStartedAt: string | null;
+  windowEndsAt: string | null;
+};
+
 export function redeemCompanyEntitlement(body: { userUuid: string; entitlementUuid: string; quantity?: number }) {
-  return request<{ benefit: string; unlimited: boolean; used: number | null; allowance: number | null }>("/company/subscriptions/redemptions", {
+  return request<CompanyRedemptionResult>("/company/subscriptions/redemptions", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -478,7 +542,7 @@ export function rejectCompanyClubBundle(uuid: string) {
 }
 
 export function redeemCompanyBundleBenefit(body: { userUuid: string; participantUuid: string; quantity?: number }) {
-  return request<{ benefit: string; bundle: string; unlimited: boolean; used: number | null; allowance: number | null }>(
+  return request<CompanyRedemptionResult & { bundle: string }>(
     "/company/club/bundles/redemptions",
     {
       method: "POST",

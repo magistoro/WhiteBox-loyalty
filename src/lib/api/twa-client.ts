@@ -133,6 +133,22 @@ export type TwaHistory = {
       category: ApiCategory;
     };
   }>;
+  redemptions: Array<{
+    uuid: string;
+    source: "SUBSCRIPTION" | "BUNDLE";
+    quantity: number;
+    redeemedAt: string;
+    benefit: string;
+    benefitUuid: string;
+    planName: string;
+    planUuid: string;
+    company: {
+      id: number;
+      slug: string;
+      name: string;
+      category: ApiCategory;
+    };
+  }>;
   subscriptions: TwaUserSubscription[];
   archivedSubscriptions: TwaUserSubscription[];
 };
@@ -504,6 +520,7 @@ export function getTwaProfile() {
 
 const historyFallback: TwaHistory = {
   transactions: [],
+  redemptions: [],
   subscriptions: [],
   archivedSubscriptions: [],
 };
