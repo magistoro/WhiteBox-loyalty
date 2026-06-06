@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 const COMPANY_REFERRAL_PAYOUT_TITLE = "Company referral payout request";
 const MIN_REFERRAL_PAYOUT_RUB = 5_000;
+const REFERRAL_PAYOUT_LOCK_NAMESPACE = 79_1337;
 
 type PrismaLike = typeof prisma | Prisma.TransactionClient;
 type CompanyReferralRevenueRow = Prisma.CompanyReferralGetPayload<{
@@ -246,6 +247,9 @@ export async function createCompanyReferralPayoutRequest(userId: number, amount:
   }
 
   return prisma.$transaction(async (tx) => {
+    // Serialize payout reservations per referrer so concurrent requests cannot reserve the same balance twice.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${REFERRAL_PAYOUT_LOCK_NAMESPACE}, ${userId})`;
+
     const referrals = await loadReferralRows(userId, tx);
     const payouts = await loadReferralPayouts(userId, tx);
     const summary = calculatePlatformRevenueSummary(toRevenueRows(referrals));
